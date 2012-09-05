@@ -19,7 +19,7 @@
 # configuration (only this section can be changed)
 #-----------------------------------------------------------------------------------------------------
 APPS="jira confluence stash crowd"
-DEST="/opt"
+DESTINATION="/opt"
 ARCH=64
 
 #-----------------------------------------------------------------------------------------------------
@@ -65,9 +65,11 @@ PING="/usr/sbin/ping"
 STAMP_TIME=$(${DATE} +%Y%m%d-%H%M%S)
 
 #-----------------------------------------------------------------------------------------------------
-# constants
+#
 #-----------------------------------------------------------------------------------------------------
 HOME="${DEST}/${APPS}/data"
+JOB_UPDATE=0
+JOB_INSTALL=0
 
 #-----------------------------------------------------------------------------------------------------
 # control structure
@@ -75,8 +77,9 @@ HOME="${DEST}/${APPS}/data"
 if [ $# -gt 0 ] ; then
   while true ; do
     case $1 in
-      -u|--update)      shift; NAME_TANANT=$(echo $1 | ${TR} '[:lower:]' '[:upper:]') ;;
-      -i|--install)     shift; FILE_PRINTERS=$1 ;;
+      -u|--update)      JOB_UPDATE=1 ;;
+      -i|--install)     JOB_INSTALL=1 ;;
+      -d|--destination) shift; DESTINATION=$1 ;;
       -d|--debug)       shift; set -x ;;
       -h|-?|--help)     ${PRINTF} "${USAGE}"; exit ;;
       *)                ${PRINTF} "\nERROR: Unknown Option \"$1\" !\n"; ${PRINTF} "\n${USAGE}"; exit 1;;
@@ -85,7 +88,7 @@ if [ $# -gt 0 ] ; then
     [ $# -eq 0 ] && break
   done
 fi
-if [ "${NAME_TANANT}" == "0" ] || [ "${NAME_TANANT}" == "" ] || [ "${NAME_JOB}" == "0" ] || [ "${NAME_JOB}" == "" ]; then
+if [ "${JOB_UPDATE}" == "0" ] || [ "${JOB_UPDATE}" == "" ] && [ "${JOB_INSTALL}" == "0" ] || [ "${JOB_INSTALL}" == "" ]; then
   ${PRINTF} "${ERROR}"
   exit 1
 fi
@@ -117,18 +120,27 @@ function createUsers() {
 }
 
 function deployLatestBin() {
+  echo TEST
 }
 
 #-----------------------------------------------------------------------------------------------------
 # functions calls
 #-----------------------------------------------------------------------------------------------------
-if [ $(id ${APP}) == "1" ] ; then
-  for APP in ${APPS} ; do
-    #if [ ! -f ${DEST}/${APP} ] ; then
-    #  mkdir -p ${DEST}/${APP} >/dev/null 2>&1
-    #fi
-  done
+if [ ${JOB_UPDATE}) -eq 1 ] ; then
+  echo "UPDATE TEST"
 fi
+
+if [ ${JOB_INSTALL}) -eq 1 ] ; then
+  echo "INSTALL TEST"
+fi 
+
+#if [ $(id ${APP}) == "1" ] ; then
+#  for APP in ${APPS} ; do
+#    #if [ ! -f ${DEST}/${APP} ] ; then
+#    #  mkdir -p ${DEST}/${APP} >/dev/null 2>&1
+#    #fi
+#  done
+#fi
 
 #-----------------------------------------------------------------------------------------------------
 # notes
