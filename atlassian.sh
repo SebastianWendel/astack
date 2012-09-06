@@ -154,6 +154,54 @@ function installApache() {
   echo "installMysql"
 }
 
+function createVhost() {
+#sudo cat > /etc/httpd/conf.d/jenkins.conf << 'EOF'
+#<VirtualHost *:80>
+#  ServerName        build.dfd-hamburg.de
+  # ServerAlias       macrodeployment.dfd-hamburg.de
+  # ServerSignature   Off
+ 
+  # ErrorLog      logs/jenkins-error.loge
+  # CustomLog     logs/jekins-access.log combined
+  # LogLevel      warn
+ 
+  # RewriteEngine On
+  # RewriteCond %{HTTPS} off
+  # RewriteRule (.*) https://%{HTTP_HOST}%{REQUEST_URI}
+# </VirtualHost>
+ 
+# <VirtualHost *:443>
+  # ServerName        build.dfd-hamburg.de
+  # ServerAlias       macrodeployment.dfd-hamburg.de
+  # ServerSignature   Off
+ 
+  # SSLEngine     on
+  # SSLProtocol   all -SSLv2
+  # SSLCipherSuite ALL:!ADH:!EXPORT:!SSLv2:RC4+RSA:+HIGH:+MEDIUM:+LOW
+  # SSLCertificateFile /etc/ssl/certs/eos-build-00.pem
+  # SSLCertificateKeyFile /etc/ssl/certs/eos-build-00.key
+ 
+  # ErrorLog      logs/jenkins-error.log
+  # CustomLog     logs/jekins-access.log combined
+  # LogLevel      warn
+ 
+  # ProxyPass             / http://0.0.0.0:8080/
+  # ProxyPassReverse      / http://0.0.0.0:8080/
+  # ProxyRequests         Off
+ 
+  # <Proxy http://0.0.0.0:8080/*>
+    # Order deny,allow
+    # Allow from all
+  # </Proxy>
+# </VirtualHost>
+# EOS
+}
+
+function createCerts() {
+  openssl genrsa > /etc/ssl/certs/eos-build-00.key
+  openssl req -new -x509 -key /etc/ssl/certs/eos-build-00.key -out /etc/ssl/certs/eos-build-00.pem -days 3650
+}
+
 function installMysql() {
   #deb http://repo.percona.com/apt VERSION main
   #deb-src http://repo.percona.com/apt VERSION main
@@ -172,6 +220,7 @@ function installMysql() {
   #MYSQL_PRESEED
   DEBIAN_FRONTEND=noninteractive apt-get install -f -y mysql-server
   echo "MySQL Password set to '${MYSQL_PASS}'. Remember to delete ~/.mysql.passwd" | tee ~/.mysql.passwd;
+  service mysqld restart
 }
 
 function installApp() {
