@@ -39,31 +39,9 @@ ERROR="FEHLER: Ein oder mehrere Vorraussetzungen wurden nicht erfüllt!\n"
 #set -o errexit
 
 #-----------------------------------------------------------------------------------------------------
-# tool stack
-#-----------------------------------------------------------------------------------------------------
-HOSTNAME="/bin/hostname"
-UNAME="/bin/uname"
-PRINTF="/usr/bin/printf"
-SED="/usr/bin/sed"
-DATE="/sbin/date"
-CUT="/usr/bin/cut"
-CAT="/usr/bin/cat"
-AWK="/sbin/awk"
-GREP="/usr/bin/grep"
-SORT="/usr/bin/sort"
-UNIQ="/usr/bin/uniq"
-DU="/usr/bin/du"
-RM="/sbin/rm"
-WC="/usr/bin/wc"
-MKDIR="/sbin/mkdir"
-SCP="/usr/bin/scp"
-TR="/usr/bin/tr"
-PING="/usr/sbin/ping"
-STAMP_TIME=$(${DATE} +%Y%m%d-%H%M%S)
-
-#-----------------------------------------------------------------------------------------------------
 #
 #-----------------------------------------------------------------------------------------------------
+STAMP_TIME=$(date +%Y%m%d-%H%M%S)
 HOME="${DEST}/${APPS}/data"
 JOB_UPDATE=0
 JOB_INSTALL=0
@@ -82,17 +60,17 @@ if [ $# -gt 0 ] ; then
       -p|--purge)       JOB_PURGE=1 ;;
       -d|--destination) shift; DESTINATION=$1 ;;
       -x|--debug)       shift; set -x ;;
-      -h|-?|--help)     ${PRINTF} "${USAGE}"; exit ;;
-      *)                ${PRINTF} "\nERROR: Unknown Option \"$1\" !\n"; ${PRINTF} "\n${USAGE}"; exit 1;;
+      -h|-?|--help)     printf "${USAGE}"; exit ;;
+      *)                printf "\nERROR: Unknown Option \"$1\" !\n"; printf "\n${USAGE}"; exit 1;;
     esac
     shift
     [ $# -eq 0 ] && break
   done
 fi
-if [ "${JOB_UPDATE}" == "0" ] || [ "${JOB_UPDATE}" == "" ] && [ "${JOB_INSTALL}" == "0" ] || [ "${JOB_INSTALL}" == "" ] || [ "${JOB_PURGE}" == "0" ] || [ "${JOB_PURGE}" == "" ]; then
-  ${PRINTF} "${ERROR}"
-  exit 1
-fi
+#if [ "${JOB_UPDATE}" == "0" ] || [ "${JOB_UPDATE}" == "" ] && [ "${JOB_INSTALL}" == "0" ] || [ "${JOB_INSTALL}" == "" ] || [ "${JOB_PURGE}" == "0" ] || [ "${JOB_PURGE}" == "" ]; then
+#  printf "${ERROR}"
+#  exit 1
+#fi
 
 #-----------------------------------------------------------------------------------------------------
 # environment
@@ -121,12 +99,12 @@ elif [ -f /etc/debian_version ]; then
 elif [ -f /etc/redhat-release ]; then
   DISTRO="redhat"
 else
-  DISTRO=$(${UNAME} -s)
+  DISTRO=$(uname -s)
   exit 1
 fi
 
 # GET KERNEL ARCHITECTURE
-case $(${UNAME} -m) in
+case $(uname -m) in
 x86_64)
   ARCH=64
   ;;
@@ -142,8 +120,8 @@ esac
 # functions
 #-----------------------------------------------------------------------------------------------------
 function log() {
-  STAMP_TIME=$(${DATE} +%Y%m%d-%H%M%S)
-  ${PRINTF} "${STAMP_TIME} $1\n" >> "${DESTINATION}\${LOGFILE}" 2>&1
+  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+  printf "${TIMESTAMP} $1\n" >> "${DESTINATION}\${LOGFILE}" 2>&1
 }
 
 function checkFilesystem() {
@@ -155,6 +133,7 @@ function installApache() {
 }
 
 function createVhost() {
+  echo "createVhost"
 #sudo cat > /etc/httpd/conf.d/jenkins.conf << 'EOF'
 #<VirtualHost *:80>
 #  ServerName        build.dfd-hamburg.de
@@ -244,17 +223,17 @@ function checkLicense() {
 }
 
 function createDatabase() {
-  if ! ${MYSQL} -u ${NAME_APP} -e "use ${NAME_APP}"; then
-    PASSWORD_SET=$(openssl rand -base64 32 | sha256sum | head -c 32 ; echo)
+  #if ! ${MYSQL} -u ${NAME_APP} -e "use ${NAME_APP}"; then
+  #  PASSWORD_SET=$(openssl rand -base64 32 | sha256sum | head -c 32 ; echo)
     #while read_dom; do
     #  if [[ $ENTITY = "Key" ]] ; then
     #     echo $CONTENT
     #  fi
     #done < input.xml
     echo "installMysql" | tee ~/.mysql.passwd
-  else
-    PASSWORD_GET=(${CAT} ${FOLDER_HOME}\conf\dbconfig.xml | ${SED} -e 's%(^<password>|</password>$)%%g')
-  fi
+  #else
+  #  PASSWORD_GET=(cat ${FOLDER_HOME}\conf\dbconfig.xml | sed -e 's%(^<password>|</password>$)%%g')
+  #fi
 }
 
 function createUsers() {
@@ -273,7 +252,7 @@ function deployLatestBin() {
 }
 
 function backupDatabase() { 
-  mysqldump
+  echo "mysqldump"
 }
 
 function backupData() { 
@@ -300,11 +279,11 @@ function purgApp() {
 #-----------------------------------------------------------------------------------------------------
 # functions calls
 #-----------------------------------------------------------------------------------------------------
-if [ ${JOB_UPDATE}) -eq 1 ] ; then
+if [ ${JOB_UPDATE} -eq 1 ] ; then
   echo "UPDATE TEST"
 fi
 
-if [ ${JOB_INSTALL}) -eq 1 ] ; then
+if [ ${JOB_INSTALL} -eq 1 ] ; then
   echo "INSTALL TEST"
 fi 
 
