@@ -234,8 +234,14 @@ function purgeCredentials() {
 }
 
 function deployLatestBin() {
-  echo TEST
+  rm -f /tmp/${1}.*
+  wget https://my.atlassian.com/download/feeds/current/${1}.json -P /tmp >/dev/null 2>&1
+  binUrl=$(cat /tmp/${1}.json | grep -Po '"zipUrl":.*?[^\\]",'  | grep tar.gz | grep -v cluster | grep -v "\-war." | cut -d"\"" -f4)
+  #wget ${binUrl} -P /tmp
+  echo $binUrl
+  echo "TEST"
 }
+
 
 function checkLicense() {
   echo checkLicense
@@ -256,10 +262,6 @@ function createDatabase() {
 }
 
 function createLogrotate() {
-  echo "deployLatestBin"
-}
-
-function deployLatestBin() {
   echo "deployLatestBin"
 }
 
@@ -300,6 +302,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     echo "INSTALL ${APP}"
     createFolders ${APP}
     createCredentials ${APP}
+    deployLatestBin ${APP}
   done
 fi 
 
