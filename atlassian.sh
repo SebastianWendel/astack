@@ -14,7 +14,7 @@
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
 #-----------------------------------------------------------------------------------------------------
-APPS="jira confluence stash crowd"
+APPS="crowd confluence jira stash"
 DESTINATION="/opt"
 LOGFILE="atlassian-setup.log"
 
@@ -39,10 +39,9 @@ ERROR="FEHLER: Ein oder mehrere Vorraussetzungen wurden nicht erfüllt!\n"
 #set -o errexit
 
 #-----------------------------------------------------------------------------------------------------
-#
+# variable
 #-----------------------------------------------------------------------------------------------------
 STAMP_TIME=$(date +%Y%m%d-%H%M%S)
-HOME="${DEST}/${APPS}/data"
 JOB_UPDATE=0
 JOB_INSTALL=0
 JOB_PURGE=0
@@ -207,10 +206,30 @@ function installApp() {
   atlassian-confluence-X.Y.bin -q -varfile response.varfile
 }
 
-function createUsers() {
-  if [ $(id ${APP}) == "1" ] ; then
-    groupadd ${APP} >/dev/null 2>&1
-    useradd -r -m -g ${APP} -d ${HOME} ${APP} >/dev/null 2>&1
+function createFolders() {
+  if [ ! -d ${DESTINATION}/${1} ] ; then
+    mkdir ${DESTINATION}/${1}
+  fi
+}
+
+function purgeFolders() {
+  if [ -d ${DESTINATION}/${1} ] ; then
+    rm -rf ${DESTINATION}/${1}
+  fi
+}
+
+function createCredentials() {
+  id -u ${1} >/dev/null 2>&1
+  if [ $? -eq 1 ] ; then
+    groupadd ${1} 
+    useradd -r -m -g ${1} -d ${DESTINATION}/${1}/data ${1}
+  fi
+}
+
+function purgeCredentials() {
+  id -u ${1} >/dev/null 2>&1
+  if [ $? -eq 0 ] ; then
+    userdel ${1}
   fi
 }
 
@@ -234,13 +253,6 @@ function createDatabase() {
   #else
   #  PASSWORD_GET=(cat ${FOLDER_HOME}\conf\dbconfig.xml | sed -e 's%(^<password>|</password>$)%%g')
   #fi
-}
-
-function createUsers() {
-  if [ $(id ${APP}) == "1" ] ; then
-    groupadd ${APP} >/dev/null 2>&1
-    useradd -r -m -g ${APP} -d ${HOME} ${APP} >/dev/null 2>&1
-  fi
 }
 
 function createLogrotate() {
@@ -277,19 +289,31 @@ function purgApp() {
 }
 
 #-----------------------------------------------------------------------------------------------------
-# functions calls
+# function calls
 #-----------------------------------------------------------------------------------------------------
 if [ ${JOB_UPDATE} -eq 1 ] ; then
   echo "UPDATE TEST"
 fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
-  echo "INSTALL TEST"
+  for APP in ${APPS}; do
+    echo "INSTALL ${APP}"
+    createFolders ${APP}
+    createCredentials ${APP}
+  done
 fi 
 
-log ${DESTINATION}
-log ${DISTRO}
-log ${ARCH}
+if [ ${JOB_PURGE} -eq 1 ] ; then
+  for APP in ${APPS}; do
+    echo "PURGE ${APP}"
+    purgeCredentials ${APP}
+    purgeFolders ${APP}
+  done
+fi 
+
+#log ${DESTINATION}
+#log ${DISTRO}
+#log ${ARCH}
 
 #-----------------------------------------------------------------------------------------------------
 # notes
