@@ -10,13 +10,19 @@
 #-----------------------------------------------------------------------------------------------------
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
+# restore procedure
+# dedicated data path
+# check java bin arch
+# check java jre free download
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
 #-----------------------------------------------------------------------------------------------------
 APPS="crowd confluence jira stash"
 DESTINATION="/opt"
+TEMP="/tmp"
 LOGFILE="atlassian-setup.log"
+DOMAIN="example.org"
 
 #-----------------------------------------------------------------------------------------------------
 # script usage
@@ -229,10 +235,10 @@ function createCredentials() {
 function setEnvirement() {
   if [ -f "${DESTINATION}/${1}/data/.profile" ] ; then
     if [ ! $(grep JAVA_HOME "${DESTINATION}/${1}/data/.profile") ] ; then
-      echo "export JAVA_HOME=/opt/java/current" >> "${DESTINATION}/${1}/data/.profile"
-      echo "export PATH=$PATH:/opt/java/current/bin" >> "${DESTINATION}/${1}/data/.profile"
+      echo "export JAVA_HOME=${DESTINATION}/java/current" >> "${DESTINATION}/${1}/data/.profile"
+      echo "export PATH=$PATH:${DESTINATION}/java/current/bin" >> "${DESTINATION}/${1}/data/.profile"
       if [ ${1} == "stash" ] ; then
-        echo "export STASH_HOME=/opt/stash/data" >> "${DESTINATION}/${1}/data/.profile"
+        echo "export STASH_HOME=${DESTINATION}/stash/data" >> "${DESTINATION}/${1}/data/.profile"
       fi
     fi
   fi
@@ -253,9 +259,9 @@ function purgeJava() {
 
 function killApp() {
   if [ ${1} == "crowd" ] ; then
-    PID_FILE="/opt/crowd/current/apache-tomcat/work/catalina.pid"
+    PID_FILE="${DESTINATION}/crowd/current/apache-tomcat/work/catalina.pid"
   else
-    PID_FILE="/opt/${1}/current/work/catalina.pid"
+    PID_FILE="${DESTINATION}/${1}/current/work/catalina.pid"
   fi
   if [ -f ${PID_FILE} ] ; then
     PID=$(cat ${PID_FILE})
@@ -265,54 +271,56 @@ function killApp() {
 
 function startApp() {
   if [ ${1} == "crowd" ] ; then
-    if [ ! -f "/opt/crowd/current/apache-tomcat/work/catalina.pid" ] ; then
-      su ${1} -l -c "/opt/crowd/current/start_crowd.sh >/dev/null 2>&1"
+    if [ ! -f "${DESTINATION}/crowd/current/apache-tomcat/work/catalina.pid" ] ; then
+      su ${1} -l -c "${DESTINATION}/crowd/current/start_crowd.sh >/dev/null 2>&1"
     fi
   else
-    if [ ! -f "/opt/${1}/current/work/catalina.pid" ] ; then
-      su ${1} -l -c "/opt/${1}/current/bin/start-${1}.sh >/dev/null 2>&1"
+    if [ ! -f "${DESTINATION}/${1}/current/work/catalina.pid" ] ; then
+      su ${1} -l -c "${DESTINATION}/${1}/current/bin/start-${1}.sh >/dev/null 2>&1"
     fi
   fi
 }
 
 function deployLatestJava() {
-  if [ -f /tmp/jdk-*-linux-*.tar.gz ] ; then
-    JAVA_BIN=$(ls /tmp/jdk-*-linux-*.tar.gz)
+  if [ -f ${TEMP}/jdk-*-linux-*.tar.gz ] ; then
+    JAVA_BIN=$(ls ${TEMP}/jdk-*-linux-*.tar.gz)
     JAVA_NAME=$(tar ztvf ${JAVA_BIN} | head -n 1 | awk '{print $6}' | cut -d"/" -f1)
     if [ ! -d "${DESTINATION}/java" ] ; then
       mkdir "${DESTINATION}/java"
     fi
     if [ ! -d "${DESTINATION}/java/${JAVA_NAME}" ] ; then
       tar -xzvf ${JAVA_BIN} -C "${DESTINATION}/java" >/dev/null 2>&1
-      ln -fs "${DESTINATION}/java/${JAVA_NAME}" /opt/java/current
-      chown -R root:root /opt/java/current/
+      ln -fs "${DESTINATION}/java/${JAVA_NAME}" ${DESTINATION}/java/current
+      chown -R root:root ${DESTINATION}/java/current/
     fi
   fi
 }
 
 function deployLatestBin() {
-  rm -f /tmp/${1}.*
-  wget https://my.atlassian.com/download/feeds/current/${1}.json -P /tmp >/dev/null 2>&1
-  binUrl=$(cat /tmp/${1}.json | grep -Po '"zipUrl":.*?[^\\]",'  | grep tar.gz | grep -v cluster | grep -v "\-war." | cut -d"\"" -f4)
-  fileName=$(echo ${binUrl} | cut -d"/" -f8 )
-  folderName=${fileName%.tar.gz}
-  if [ ! -f /tmp/${fileName} ] ; then
-    wget ${binUrl} -P /tmp >/dev/null 2>&1
+  rm -f ${TEMP}/${1}.*
+  wget https://my.atlassian.com/download/feeds/current/${1}.json -P ${TEMP} >/dev/null 2>&1
+  BIN_URL=$(cat ${TEMP}/${1}.json | grep -Po '"zipUrl":.*?[^\\]",'  | grep tar.gz | grep -v cluster | grep -v "\-war." | cut -d"\"" -f4)
+  FILE_NAME=$(echo ${BIN_URL} | cut -d"/" -f8 )
+  FOLDER_NAME=${FILE_NAME%.tar.gz}
+  if [ ! -f ${TEMP}/${FILE_NAME} ] ; then
+    wget ${BIN_URL} -P /tmp >/dev/null 2>&1
   fi
-  tar -xzvf /tmp/${fileName} -C ${DESTINATION}/${1} >/dev/null 2>&1
+  tar -xzvf ${TEMP}/${FILE_NAME} -C ${DESTINATION}/${1} >/dev/null 2>&1
   if [ ${1} == "jira" ] ; then
-    ln -fs "/opt/${1}/${folderName}-standalone" /opt/${1}/current
+    ln -fs "${DESTINATION}/${1}/${FOLDER_NAME}-standalone" ${DESTINATION}/${1}/current
   else
-    ln -fs /opt/${1}/${folderName} /opt/${1}/current
+    ln -fs ${DESTINATION}/${1}/${FOLDER_NAME} ${DESTINATION}/${1}/current
   fi
-  chown -R ${1}:${1} "/opt/${1}/current/"
+  chown -R ${1}:${1} "${DESTINATION}/${1}/current/"
 }
 
 function setFixes() {
+  #find ${DESTINATION}/${1} -name server.xml -exec sed 's/Host name="localhost"/Host name="127.0.0.1"/g' -i {} \; 
+  #find ${DESTINATION}/${1} -name server.xml -exec sed 's/Engine name="Standalone" defaultHost="localhost"/Engine name="Standalone" defaultHost="127.0.0.1"/g' -i {} \; 
   if [ ${1} == "crowd" ] ; then
-    if [ -f "/opt/crowd/current/apache-tomcat/bin/setenv.sh" ] ; then
-      if [ ! $(grep CATALINA_PID "/opt/crowd/current/apache-tomcat/bin/setenv.sh") ] ; then
-        cat >> /opt/crowd/current/apache-tomcat/bin/setenv.sh << 'EOF'
+    if [ -f "${DESTINATION}/crowd/current/apache-tomcat/bin/setenv.sh" ] ; then
+      if [ ! $(grep CATALINA_PID "${DESTINATION}/crowd/current/apache-tomcat/bin/setenv.sh") ] ; then
+        cat >> ${DESTINATION}/crowd/current/apache-tomcat/bin/setenv.sh << 'EOF'
 # set the location of the pid file
 if [ -z "$CATALINA_PID" ] ; then
     if [ -n "$CATALINA_BASE" ] ; then
