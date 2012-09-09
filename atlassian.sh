@@ -266,11 +266,11 @@ function killApp() {
 function startApp() {
   if [ ${1} == "crowd" ] ; then
     if [ ! -f "/opt/crowd/current/apache-tomcat/work/catalina.pid" ] ; then
-      su ${1} -l -c "/opt/crowd/current/start_crowd.sh"
+      su ${1} -l -c "/opt/crowd/current/start_crowd.sh >/dev/null 2>&1"
     fi
   else
     if [ ! -f "/opt/${1}/current/work/catalina.pid" ] ; then
-      su ${1} -l -c "/opt/${1}/current/bin/start-${1}.sh"
+      su ${1} -l -c "/opt/${1}/current/bin/start-${1}.sh >/dev/null 2>&1"
     fi
   fi
 }
