@@ -233,15 +233,29 @@ function purgeCredentials() {
   fi
 }
 
+function deployLatestJava() {
+  if [ -f /tmp/jdk-*-linux-*.tar.gz ]
+    echo "JAVA_BIN OK"
+  fi
+}
+
 function deployLatestBin() {
   rm -f /tmp/${1}.*
   wget https://my.atlassian.com/download/feeds/current/${1}.json -P /tmp >/dev/null 2>&1
   binUrl=$(cat /tmp/${1}.json | grep -Po '"zipUrl":.*?[^\\]",'  | grep tar.gz | grep -v cluster | grep -v "\-war." | cut -d"\"" -f4)
-  #wget ${binUrl} -P /tmp
-  echo $binUrl
-  echo "TEST"
+  fileName=$(echo ${binUrl} | cut -d"/" -f8 )
+  folderName=${fileName%.tar.gz}
+  if [ ! -f /tmp/${fileName} ] ; then
+    wget ${binUrl} -P /tmp >/dev/null 2>&1
+  fi
+  tar -xzvf /tmp/${fileName} -C ${DESTINATION}/${1} >/dev/null 2>&1
+  if [ ${APP} == "jira" ] ; then
+    ln -fs "/opt/${1}/${folderName}-standalone" /opt/${1}/current
+  else
+    ln -fs /opt/${1}/${folderName} /opt/${1}/current
+  fi
+  chown -R ${1}:${1} "/opt/${1}/current/"
 }
-
 
 function checkLicense() {
   echo checkLicense
@@ -302,6 +316,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     echo "INSTALL ${APP}"
     createFolders ${APP}
     createCredentials ${APP}
+    deployLatestJAVA
     deployLatestBin ${APP}
   done
 fi 
