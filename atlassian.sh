@@ -219,18 +219,21 @@ function purgeFolders() {
 }
 
 function createCredentials() {
-  id -u ${1} >/dev/null 2>&1
+  id -u ${1} > /dev/null 2>&1
   if [ $? -eq 1 ] ; then
-    groupadd ${1} 
-    useradd -r -m -g ${1} -d ${DESTINATION}/${1}/data ${1}
+    groupadd ${1}
+    useradd -s /bin/bash -r -m -g ${1} -d ${DESTINATION}/${1}/data ${1}
   fi
 }
 
-function exportJavaHome() {
+function setEnvirement() {
   if [ -f "${DESTINATION}/${1}/data/.profile" ] ; then
     if [ ! $(grep JAVA_HOME "${DESTINATION}/${1}/data/.profile") ] ; then
-      echo "export JAVA_HOME=/opt/java/current/bin/java" >> "${DESTINATION}/${1}/data/.profile"
+      echo "export JAVA_HOME=/opt/java/current" >> "${DESTINATION}/${1}/data/.profile"
       echo "export PATH=$PATH:/opt/java/current/bin" >> "${DESTINATION}/${1}/data/.profile"
+      if [ ${1} == "stash" ] ; then
+        echo "export STASH_HOME=/opt/stash/data" >> "${DESTINATION}/${1}/data/.profile"
+      fi
     fi
   fi
 }
@@ -245,6 +248,30 @@ function purgeCredentials() {
 function purgeJava() {
   if [ -d "${DESTINATION}/java" ] ; then
     rm -rf "${DESTINATION}/java"
+  fi
+}
+
+function killApp() {
+  if [ ${1} == "crowd" ] ; then
+    PID_FILE="/opt/crowd/current/apache-tomcat/work/catalina.pid"
+  else
+    PID_FILE="/opt/${1}/current/work/catalina.pid"
+  fi
+  if [ -f ${PID_FILE} ] ; then
+    PID=$(cat ${PID_FILE})
+    kill -9 ${PID}
+  fi
+}
+
+function startApp() {
+  if [ ${1} == "crowd" ] ; then
+    if [ ! -f "/opt/crowd/current/apache-tomcat/work/catalina.pid" ] ; then
+      su ${1} -l -c "/opt/crowd/current/start_crowd.sh"
+    fi
+  else
+    if [ ! -f "/opt/${1}/current/work/catalina.pid" ] ; then
+      su ${1} -l -c "/opt/${1}/current/bin/start-${1}.sh"
+    fi
   fi
 }
 
@@ -273,12 +300,55 @@ function deployLatestBin() {
     wget ${binUrl} -P /tmp >/dev/null 2>&1
   fi
   tar -xzvf /tmp/${fileName} -C ${DESTINATION}/${1} >/dev/null 2>&1
-  if [ ${APP} == "jira" ] ; then
+  if [ ${1} == "jira" ] ; then
     ln -fs "/opt/${1}/${folderName}-standalone" /opt/${1}/current
   else
     ln -fs /opt/${1}/${folderName} /opt/${1}/current
   fi
   chown -R ${1}:${1} "/opt/${1}/current/"
+}
+
+function setFixes() {
+  if [ ${1} == "crowd" ] ; then
+    if [ -f "/opt/crowd/current/apache-tomcat/bin/setenv.sh" ] ; then
+      if [ ! $(grep CATALINA_PID "/opt/crowd/current/apache-tomcat/bin/setenv.sh") ] ; then
+        cat >> /opt/crowd/current/apache-tomcat/bin/setenv.sh << 'EOF'
+# set the location of the pid file
+if [ -z "$CATALINA_PID" ] ; then
+    if [ -n "$CATALINA_BASE" ] ; then
+        CATALINA_PID="$CATALINA_BASE"/work/catalina.pid
+    elif [ -n "$CATALINA_HOME" ] ; then
+        CATALINA_PID="$CATALINA_HOME"/work/catalina.pid
+    fi
+fi
+export CATALINA_PID
+
+PRGDIR=`dirname "$0"`
+if [ -z "$CATALINA_BASE" ]; then
+  if [ -z "$CATALINA_HOME" ]; then
+    LOGBASE=$PRGDIR
+    LOGTAIL=..
+  else
+    LOGBASE=$CATALINA_HOME
+    LOGTAIL=.
+  fi
+else
+  LOGBASE=$CATALINA_BASE
+  LOGTAIL=.
+fi
+
+PUSHED_DIR=`pwd`
+cd $LOGBASE
+cd $LOGTAIL
+LOGBASEABS=`pwd`
+cd $PUSHED_DIR
+
+echo ""
+echo "Server startup logs are located in $LOGBASEABS/logs/catalina.out"
+EOF
+      fi
+    fi
+  fi
 }
 
 function checkLicense() {
@@ -316,18 +386,6 @@ function restoreLatestData() {
   tar -zxvf prog-1-jan-2005.tar.gz -C /home/jerry/prog
 }
 
-function startApp() {
-  echo "startApp"
-}
-
-function stopApp() {
-  echo "stopApp"
-}
-
-function purgApp() {
-  echo "purgApp"
-}
-
 #-----------------------------------------------------------------------------------------------------
 # function calls
 #-----------------------------------------------------------------------------------------------------
@@ -341,8 +399,10 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     echo "INSTALL ${APP}"
     createFolders ${APP}
     createCredentials ${APP}
-    exportJavaHome ${APP}
+    setEnvirement ${APP}
     deployLatestBin ${APP}
+    setFixes ${APP}
+    startApp ${APP}
   done
 fi 
 
@@ -350,6 +410,7 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
   purgeJava
   for APP in ${APPS}; do
     echo "PURGE ${APP}"
+    killApp ${APP}
     purgeCredentials ${APP}
     purgeFolders ${APP}
   done
@@ -362,7 +423,3 @@ fi
 #-----------------------------------------------------------------------------------------------------
 # notes
 #-----------------------------------------------------------------------------------------------------
-#http://www.atlassian.com/software/jira/downloads/binary/atlassian-jira-5.1.4-x64.bin
-#http://www.atlassian.com/software/stash/downloads/binary/atlassian-stash-1.2.2.tar.gz
-#wget http://www.atlassian.com/software/jira/download
-#http://www.atlassian.com/software/${APP}/downloads/binary/atlassian-${APP}-
