@@ -1,6 +1,6 @@
 #!/bin/bash
 #-----------------------------------------------------------------------------------------------------
-# File:         atlassian-setup.sh
+# File:         atlassian.sh
 # Description:  xxxxxxxxxxxxxxxxxxxxxxx
 # Plattform:    Red-Hat,CentOS,Debian,Ubuntu
 # Created:      01.09.2012
@@ -73,10 +73,10 @@ if [ $# -gt 0 ] ; then
     [ $# -eq 0 ] && break
   done
 fi
-#if [ "${JOB_UPDATE}" == "0" ] || [ "${JOB_UPDATE}" == "" ] && [ "${JOB_INSTALL}" == "0" ] || [ "${JOB_INSTALL}" == "" ] || [ "${JOB_PURGE}" == "0" ] || [ "${JOB_PURGE}" == "" ]; then
-#  printf "${ERROR}"
-#  exit 1
-#fi
+if [ "${JOB_UPDATE}" == "0" ] && [ "${JOB_INSTALL}" == "0" ] && [ "${JOB_PURGE}" == "0" ] ; then
+  printf "${ERROR}"
+  exit 1
+fi
 
 #-----------------------------------------------------------------------------------------------------
 # environment
@@ -111,15 +111,15 @@ fi
 
 # GET KERNEL ARCHITECTURE
 case $(uname -m) in
-x86_64)
-  ARCH=64
-  ;;
-i*86)
-  ARCH=32
-  ;;
-*)
-  ARCH=?
-  ;;
+  x86_64)
+    ARCH=64
+    ;;
+  i*86)
+    ARCH=32
+    ;;
+  *)
+    ARCH=?
+    ;;
 esac
   
 #-----------------------------------------------------------------------------------------------------
@@ -135,56 +135,100 @@ function checkFilesystem() {
 }
 
 function installApache() {
-  echo "installMysql"
-}
-
-function createVhost() {
-  echo "createVhost"
-#sudo cat > /etc/httpd/conf.d/jenkins.conf << 'EOF'
-#<VirtualHost *:80>
-#  ServerName        build.dfd-hamburg.de
-  # ServerAlias       macrodeployment.dfd-hamburg.de
-  # ServerSignature   Off
- 
-  # ErrorLog      logs/jenkins-error.loge
-  # CustomLog     logs/jekins-access.log combined
-  # LogLevel      warn
- 
-  # RewriteEngine On
-  # RewriteCond %{HTTPS} off
-  # RewriteRule (.*) https://%{HTTP_HOST}%{REQUEST_URI}
-# </VirtualHost>
- 
-# <VirtualHost *:443>
-  # ServerName        build.dfd-hamburg.de
-  # ServerAlias       macrodeployment.dfd-hamburg.de
-  # ServerSignature   Off
- 
-  # SSLEngine     on
-  # SSLProtocol   all -SSLv2
-  # SSLCipherSuite ALL:!ADH:!EXPORT:!SSLv2:RC4+RSA:+HIGH:+MEDIUM:+LOW
-  # SSLCertificateFile /etc/ssl/certs/eos-build-00.pem
-  # SSLCertificateKeyFile /etc/ssl/certs/eos-build-00.key
- 
-  # ErrorLog      logs/jenkins-error.log
-  # CustomLog     logs/jekins-access.log combined
-  # LogLevel      warn
- 
-  # ProxyPass             / http://0.0.0.0:8080/
-  # ProxyPassReverse      / http://0.0.0.0:8080/
-  # ProxyRequests         Off
- 
-  # <Proxy http://0.0.0.0:8080/*>
-    # Order deny,allow
-    # Allow from all
-  # </Proxy>
-# </VirtualHost>
-# EOS
+  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+    if [ ! $(which apache2) ] ; then 
+      apt-get install -y apache2 >/dev/null 2>&1
+    fi 
+    a2enmod proxy ssl rewrite >/dev/null 2>&1
+    if [ ! $(grep "NameVirtualHost *:443" /etc/apache2/ports.conf) ] ; then
+      echo "NameVirtualHost *:443" >> /etc/apache2/ports.conf
+    fi
+    service apache2 restart >/dev/null 2>&1
+  fi
 }
 
 function createCerts() {
-  openssl genrsa > /etc/ssl/certs/eos-build-00.key
-  openssl req -new -x509 -key /etc/ssl/certs/eos-build-00.key -out /etc/ssl/certs/eos-build-00.pem -days 3650
+  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+    SSL_FOLDER="/etc/ssl/certs"
+  else
+    SSL_FOLDER="/etc/ssl/certs" # have to be determined
+  fi 
+  if [ ! $(which openssl) ] ; then 
+    apt-get install -y apache2 >/dev/null 2>&1
+  fi 
+  if [[ ! -f  ${SSL_FOLDER}/${DOMAIN}.key && ${SSL_FOLDER}/${DOMAIN}.pem ]] ; then
+    openssl genrsa > ${SSL_FOLDER}/${DOMAIN}.key
+    openssl req -new -x509 -key ${SSL_FOLDER}/${DOMAIN}.key -out ${SSL_FOLDER}/${DOMAIN}.pem -days 3650
+  fi
+}
+
+function createVhost() {
+  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+    VHOST_FILE="/etc/apache2/sites-available/${1}"
+    SSL_FOLDER="/etc/ssl/certs"
+  else
+    VHOST_FILE="/etc/httpd/conf.d/${1}"
+    SSL_FOLDER="/etc/ssl/certs" # have to be determined
+  fi 
+  APACHE_LOG_DIR='${APACHE_LOG_DIR}'
+  cat > ${VHOST_FILE} << EOF
+<VirtualHost *:80>
+  ServerName        ${1}.${DOMAIN}
+  ServerAdmin       webmaster@${DOMAIN}
+  ServerSignature   Off
+ 
+  ErrorLog          ${APACHE_LOG_DIR}/${1}-error.loge
+  CustomLog         ${APACHE_LOG_DIR}/${1}-access.log combined
+  LogLevel          warn
+ 
+  RewriteEngine     On
+  RewriteCond       %{HTTPS} off
+  RewriteRule       (.*) https://%{HTTP_HOST}%{REQUEST_URI}
+</VirtualHost>
+ 
+<VirtualHost *:443>
+  ServerName        ${1}.${DOMAIN} 
+  ServerAdmin       webmaster@${DOMAIN}
+  ServerSignature   Off
+ 
+  SSLEngine         On
+  SSLProtocol       -all +SSLv3 +TLSv1
+  SSLCipherSuite    SSLv3:+HIGH:+MEDIUM
+  SSLCertificateFile ${SSL_FOLDER}/${DOMAIN}.pem
+  SSLCertificateKeyFile ${SSL_FOLDER}/${DOMAIN}.key
+ 
+  ErrorLog          ${APACHE_LOG_DIR}/${1}-error.log
+  CustomLog         ${APACHE_LOG_DIR}/${1}-access.log combined
+  LogLevel          warn
+ 
+  ProxyPass         / http://0.0.0.0:8080/
+  ProxyPassReverse  / http://0.0.0.0:8080/
+  ProxyRequests     Off
+ 
+  <Proxy http://0.0.0.0:8080/*>
+    Order deny,allow
+    Allow from all
+  </Proxy>
+</VirtualHost>
+EOF
+  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+    a2ensite ${1} >/dev/null 2>&1
+    a2dissite default default-ssl >/dev/null 2>&1
+    service apache2 reload >/dev/null 2>&1
+  else
+    service httpd reload >/dev/null 2>&1
+  fi
+}
+
+function purgeVhost() {
+  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+    a2dissite ${1} >/dev/null 2>&1
+    rm -f /etc/apache2/sites-available/${1} >/dev/null 2>&1
+    service apache2 reload >/dev/null 2>&1
+  else
+    rm -f /etc/apache2/sites-available/${1} >/dev/null 2>&1
+    service httpd reload >/dev/null 2>&1
+  fi 
 }
 
 function installMysql() {
@@ -266,7 +310,7 @@ function killApp() {
   fi
   if [ -f ${PID_FILE} ] ; then
     PID=$(cat ${PID_FILE})
-    kill -9 ${PID}
+    kill -9 ${PID} >/dev/null 2>&1
   fi
 }
 
@@ -298,7 +342,7 @@ function deployLatestJava() {
 }
 
 function deployLatestBin() {
-  rm -f ${TEMP}/${1}.*
+  #rm -f ${TEMP}/${1}.* # wird nicht gennutzt und nicht benötgt
   wget https://my.atlassian.com/download/feeds/current/${1}.json -P ${TEMP} >/dev/null 2>&1
   BIN_URL=$(cat ${TEMP}/${1}.json | grep -Po '"zipUrl":.*?[^\\]",'  | grep tar.gz | grep -v cluster | grep -v "\-war." | cut -d"\"" -f4)
   FILE_NAME=$(echo ${BIN_URL} | cut -d"/" -f8 )
@@ -408,6 +452,8 @@ fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
   deployLatestJava
+  installApache
+  createCerts
   for APP in ${APPS}; do
     echo "INSTALL ${APP}"
     createFolders ${APP}
@@ -416,6 +462,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     deployLatestBin ${APP}
     setFixes ${APP}
     startApp ${APP}
+    createVhost ${APP}
   done
 fi 
 
@@ -426,6 +473,7 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
     killApp ${APP}
     purgeCredentials ${APP}
     purgeFolders ${APP}
+    purgeVhost ${APP}
   done
 fi 
 
