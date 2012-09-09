@@ -226,6 +226,15 @@ function createCredentials() {
   fi
 }
 
+function exportJavaHome() {
+  if [ -f "${DESTINATION}/${1}/data/.profile" ] ; then
+    if [ ! $(grep JAVA_HOME "${DESTINATION}/${1}/data/.profile") ] ; then
+      echo "export JAVA_HOME=/opt/java/current/bin/java" >> "${DESTINATION}/${1}/data/.profile"
+      echo "export PATH=$PATH:/opt/java/current/bin" >> "${DESTINATION}/${1}/data/.profile"
+    fi
+  fi
+}
+
 function purgeCredentials() {
   id -u ${1} >/dev/null 2>&1
   if [ $? -eq 0 ] ; then
@@ -233,9 +242,24 @@ function purgeCredentials() {
   fi
 }
 
+function purgeJava() {
+  if [ -d "${DESTINATION}/java" ] ; then
+    rm -rf "${DESTINATION}/java"
+  fi
+}
+
 function deployLatestJava() {
-  if [ -f /tmp/jdk-*-linux-*.tar.gz ]
-    echo "JAVA_BIN OK"
+  if [ -f /tmp/jdk-*-linux-*.tar.gz ] ; then
+    JAVA_BIN=$(ls /tmp/jdk-*-linux-*.tar.gz)
+    JAVA_NAME=$(tar ztvf ${JAVA_BIN} | head -n 1 | awk '{print $6}' | cut -d"/" -f1)
+    if [ ! -d "${DESTINATION}/java" ] ; then
+      mkdir "${DESTINATION}/java"
+    fi
+    if [ ! -d "${DESTINATION}/java/${JAVA_NAME}" ] ; then
+      tar -xzvf ${JAVA_BIN} -C "${DESTINATION}/java" >/dev/null 2>&1
+      ln -fs "${DESTINATION}/java/${JAVA_NAME}" /opt/java/current
+      chown -R root:root /opt/java/current/
+    fi
   fi
 }
 
@@ -312,16 +336,18 @@ if [ ${JOB_UPDATE} -eq 1 ] ; then
 fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
+  deployLatestJava
   for APP in ${APPS}; do
     echo "INSTALL ${APP}"
     createFolders ${APP}
     createCredentials ${APP}
-    deployLatestJAVA
+    exportJavaHome ${APP}
     deployLatestBin ${APP}
   done
 fi 
 
 if [ ${JOB_PURGE} -eq 1 ] ; then
+  purgeJava
   for APP in ${APPS}; do
     echo "PURGE ${APP}"
     purgeCredentials ${APP}
