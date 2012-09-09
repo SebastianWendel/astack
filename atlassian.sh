@@ -14,6 +14,7 @@
 # dedicated data path
 # check java bin arch
 # check java jre free download
+# Check application home folders
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
@@ -247,7 +248,7 @@ function setEnvirement() {
 function purgeCredentials() {
   id -u ${1} >/dev/null 2>&1
   if [ $? -eq 0 ] ; then
-    userdel ${1}
+    userdel -f ${1}
   fi
 }
 
@@ -315,8 +316,12 @@ function deployLatestBin() {
 }
 
 function setFixes() {
+  #/opt/crowd/current/crowd-webapp/WEB-INF/classes/crowd-init.properties:#crowd.home=c:/data/crowd-home
+  #/opt/confluence/current/confluence/WEB-INF/classes/confluence-init.properties:# confluence.home=/var/data/confluence/
+  #/opt/jira/current/atlassian-jira/WEB-INF/classes/jira-application.properties
   #find ${DESTINATION}/${1} -name server.xml -exec sed 's/Host name="localhost"/Host name="127.0.0.1"/g' -i {} \; 
   #find ${DESTINATION}/${1} -name server.xml -exec sed 's/Engine name="Standalone" defaultHost="localhost"/Engine name="Standalone" defaultHost="127.0.0.1"/g' -i {} \; 
+  find ${DESTINATION}/${1}/current -name ${1}-\*.properties -exec sed 's|# ${1}.home=/var/${1}/|${1}.home=${DESTINATION}/${1}/data/|g' -i {} \;
   if [ ${1} == "crowd" ] ; then
     if [ -f "${DESTINATION}/crowd/current/apache-tomcat/bin/setenv.sh" ] ; then
       if [ ! $(grep CATALINA_PID "${DESTINATION}/crowd/current/apache-tomcat/bin/setenv.sh") ] ; then
