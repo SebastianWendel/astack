@@ -54,6 +54,10 @@ JOB_INSTALL=0
 JOB_PURGE=0
 VERSION_NOW=0
 VERSION_UPDATE=0
+PORT_CROWD=8095
+PORT_CONFLUENCE=8090
+PORT_JIRA=8080
+PORT_STASH=7999
 
 #-----------------------------------------------------------------------------------------------------
 # control structure
@@ -163,6 +167,15 @@ function createCerts() {
 }
 
 function createVhost() {
+  if [ ${1} == "crowd" ] ; then
+    PORT=${PORT_CROWD}
+  elif [ ${1} == "confluence" ] ; then
+    PORT=${PORT_CONFLUENCE}
+  elif [ ${1} == "jira" ] ; then
+    PORT=${PORT_JIRA}
+  elif [ ${1} == "stash" ] ; then
+    PORT=${PORT_STASH}
+  fi
   if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
     VHOST_FILE="/etc/apache2/sites-available/${1}"
     SSL_FOLDER="/etc/ssl/certs"
@@ -201,11 +214,11 @@ function createVhost() {
   CustomLog         ${APACHE_LOG_DIR}/${1}-access.log combined
   LogLevel          warn
  
-  ProxyPass         / http://0.0.0.0:8080/
-  ProxyPassReverse  / http://0.0.0.0:8080/
+  ProxyPass         / http://127.0.0.1:${PORT}/
+  ProxyPassReverse  / http://127.0.0.1:${PORT}/
   ProxyRequests     Off
  
-  <Proxy http://0.0.0.0:8080/*>
+  <Proxy http://127.0.0.1:${PORT}/*>
     Order deny,allow
     Allow from all
   </Proxy>
