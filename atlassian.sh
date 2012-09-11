@@ -10,6 +10,7 @@
 #-----------------------------------------------------------------------------------------------------
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
+# check if running by root
 # restore procedure
 # dedicated data path
 # check java bin arch
@@ -195,7 +196,7 @@ function createVhost() {
   LogLevel          warn
  
   RewriteEngine     On
-  RewriteCond       %{HTTPS} off
+  #RewriteCond       %{HTTPS} off
   RewriteRule       (.*) https://%{HTTP_HOST}%{REQUEST_URI}
 </VirtualHost>
  
@@ -215,8 +216,11 @@ function createVhost() {
   LogLevel          warn
  
   ProxyRequests Off
-  ProxyPass         /${1} http://127.0.0.1:${PORT}/${1}
-  ProxyPassReverse  /${1} http://127.0.0.1:${PORT}/${1}
+  ProxyPass         / http://0.0.0.0:${PORT}
+  ProxyPassReverse  / http://0.0.0.0:${PORT}
+
+  #ProxyPass         /${1} http://0.0.0.0:${PORT}/${1}
+  #ProxyPassReverse  /${1} http://0.0.0.0:${PORT}/${1}
  
   <Proxy http://127.0.0.1:${PORT}/*>
     Order deny,allow
@@ -225,8 +229,8 @@ function createVhost() {
 
   RewriteEngine     On
   RewriteLogLevel   0
-  RewriteLog        ${APACHE_LOG_DIR}/${1}-rewrite.log
-  RewriteRule       ^/?$ https://%{HTTP_HOST}/${1}/ [R,L]
+  #RewriteLog        ${APACHE_LOG_DIR}/${1}-rewrite.log
+  #RewriteRule       ^/?$ https://%{HTTP_HOST}/${1}/ [R,L]
 </VirtualHost>
 EOF
   if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
