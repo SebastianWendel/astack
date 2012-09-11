@@ -190,7 +190,7 @@ function createVhost() {
   ServerAdmin       webmaster@${DOMAIN}
   ServerSignature   Off
  
-  ErrorLog          ${APACHE_LOG_DIR}/${1}-error.loge
+  ErrorLog          ${APACHE_LOG_DIR}/${1}-error.log
   CustomLog         ${APACHE_LOG_DIR}/${1}-access.log combined
   LogLevel          warn
  
@@ -214,14 +214,19 @@ function createVhost() {
   CustomLog         ${APACHE_LOG_DIR}/${1}-access.log combined
   LogLevel          warn
  
-  ProxyPass         / http://127.0.0.1:${PORT}/
-  ProxyPassReverse  / http://127.0.0.1:${PORT}/
-  ProxyRequests     Off
+  ProxyRequests Off
+  ProxyPass         /${1} http://127.0.0.1:${PORT}/${1}
+  ProxyPassReverse  /${1} http://127.0.0.1:${PORT}/${1}
  
   <Proxy http://127.0.0.1:${PORT}/*>
     Order deny,allow
     Allow from all
   </Proxy>
+
+  RewriteEngine     On
+  RewriteLogLevel   0
+  RewriteLog        ${APACHE_LOG_DIR}/${1}-rewrite.log
+  RewriteRule       ^/?$ https://%{HTTP_HOST}/${1}/ [R,L]
 </VirtualHost>
 EOF
   if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
