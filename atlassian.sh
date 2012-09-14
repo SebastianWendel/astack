@@ -25,6 +25,8 @@ DESTINATION="/opt"
 TEMP="/tmp"
 LOGFILE="atlassian-setup.log"
 DOMAIN="example.org"
+PKG_DEBIAN="xmlstarlet"
+PKG_REDHAT=""
 
 #-----------------------------------------------------------------------------------------------------
 # script usage
@@ -55,10 +57,6 @@ JOB_INSTALL=0
 JOB_PURGE=0
 VERSION_NOW=0
 VERSION_UPDATE=0
-PORT_CROWD=8095
-PORT_CONFLUENCE=8090
-PORT_JIRA=8080
-PORT_STASH=7999
 
 #-----------------------------------------------------------------------------------------------------
 # control structure
@@ -139,9 +137,21 @@ function checkFilesystem() {
   echo "installMysql"
 }
 
+function installTools() {
+  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+    for PKG in ${PKG_DEBIAN} ; do
+      dpkg -s ${PKG} > /dev/null 2>&1
+      if [ ! $? == "0" ] ; then 
+        apt-get install -y ${PKG} >/dev/null 2>&1
+      fi
+    done
+  fi
+}
+
 function installApache() {
   if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
-    if [ ! $(which apache2) ] ; then 
+    dpkg -l ${PKG} > /dev/null 2>&1
+    if [ ! $? == "0" ] ; then 
       apt-get install -y apache2 >/dev/null 2>&1
     fi 
     a2enmod proxy ssl rewrite >/dev/null 2>&1
@@ -168,15 +178,8 @@ function createCerts() {
 }
 
 function createVhost() {
-  if [ ${1} == "crowd" ] ; then
-    PORT=${PORT_CROWD}
-  elif [ ${1} == "confluence" ] ; then
-    PORT=${PORT_CONFLUENCE}
-  elif [ ${1} == "jira" ] ; then
-    PORT=${PORT_JIRA}
-  elif [ ${1} == "stash" ] ; then
-    PORT=${PORT_STASH}
-  fi
+  TOMCAT_CONFIG=$(find ${DESTINATION}/${1} -name server.xml)
+  TOMCAT_PORT=$(xmlstarlet sel -t -m Server/Service/Connector -v @port ${TOMCAT_CONFIG})
   if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
     VHOST_FILE="/etc/apache2/sites-available/${1}"
     SSL_FOLDER="/etc/ssl/certs"
@@ -196,7 +199,7 @@ function createVhost() {
   LogLevel          warn
  
   RewriteEngine     On
-  #RewriteCond       %{HTTPS} off
+  RewriteCond       %{HTTPS} off
   RewriteRule       (.*) https://%{HTTP_HOST}%{REQUEST_URI}
 </VirtualHost>
  
@@ -214,23 +217,29 @@ function createVhost() {
   ErrorLog          ${APACHE_LOG_DIR}/${1}-error.log
   CustomLog         ${APACHE_LOG_DIR}/${1}-access.log combined
   LogLevel          warn
- 
-  ProxyRequests Off
-  ProxyPass         / http://0.0.0.0:${PORT}
-  ProxyPassReverse  / http://0.0.0.0:${PORT}
-
-  #ProxyPass         /${1} http://0.0.0.0:${PORT}/${1}
-  #ProxyPassReverse  /${1} http://0.0.0.0:${PORT}/${1}
- 
-  <Proxy http://127.0.0.1:${PORT}/*>
-    Order deny,allow
-    Allow from all
-  </Proxy>
 
   RewriteEngine     On
   RewriteLogLevel   0
-  #RewriteLog        ${APACHE_LOG_DIR}/${1}-rewrite.log
-  #RewriteRule       ^/?$ https://%{HTTP_HOST}/${1}/ [R,L]
+  RewriteLog        ${APACHE_LOG_DIR}/${1}-rewrite.log
+  RewriteRule       ^/?$ https://%{HTTP_HOST}/${1}/ [R,L]
+
+  ProxyRequests Off
+  ProxyPreserveHost On
+   
+  <Proxy *>
+    Order deny,allow
+    Allow from all
+  </Proxy>
+        
+#  ProxyPass         / http://0.0.0.0:${TOMCAT_PORT}
+#  ProxyPassReverse  / http://0.0.0.0:${TOMCAT_PORT}
+  ProxyPass         /${1} http://0.0.0.0:${TOMCAT_PORT}/${1}
+  ProxyPassReverse  /${1} http://0.0.0.0:${TOMCAT_PORT}/${1}
+
+  <Location /${1}>
+    Order allow,deny
+    Allow from all
+  </Location>
 </VirtualHost>
 EOF
   if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
@@ -272,11 +281,6 @@ function installMysql() {
   DEBIAN_FRONTEND=noninteractive apt-get install -f -y mysql-server
   echo "MySQL Password set to '${MYSQL_PASS}'. Remember to delete ~/.mysql.passwd" | tee ~/.mysql.passwd;
   service mysqld restart
-}
-
-function installApp() {
-  cp .install4j/response.varfile
-  atlassian-confluence-X.Y.bin -q -varfile response.varfile
 }
 
 function createFolders() {
@@ -364,7 +368,6 @@ function deployLatestJava() {
 }
 
 function deployLatestBin() {
-  #rm -f ${TEMP}/${1}.* # wird nicht gennutzt und nicht benötgt
   wget https://my.atlassian.com/download/feeds/current/${1}.json -P ${TEMP} >/dev/null 2>&1
   BIN_URL=$(cat ${TEMP}/${1}.json | grep -Po '"zipUrl":.*?[^\\]",'  | grep tar.gz | grep -v cluster | grep -v "\-war." | cut -d"\"" -f4)
   FILE_NAME=$(echo ${BIN_URL} | cut -d"/" -f8 )
@@ -380,6 +383,18 @@ function deployLatestBin() {
   fi
   chown -R ${1}:${1} "${DESTINATION}/${1}/current/"
 }
+
+function configTomcatProxy() {
+  TOMCAT_CONFIG=$(find ${DESTINATION}/${1} -name server.xml)
+  if [ -f ${TOMCAT_CONFIG} ] ; then 
+    xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "/${1}" ${TOMCAT_CONFIG}
+    if [ ! $(xmlstarlet sel -t -m Server/Service/Connector -v @proxyName ${TOMCAT_CONFIG})] ; then
+      xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${1}.${DOMAIN} ${TOMCAT_CONFIG}
+#      xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyPort -v 443 ${TOMCAT_CONFIG}
+    fi
+  fi
+}
+
 
 function setFixes() {
   #/opt/crowd/current/crowd-webapp/WEB-INF/classes/crowd-init.properties:#crowd.home=c:/data/crowd-home
@@ -431,7 +446,7 @@ EOF
 }
 
 function checkLicense() {
-  echo checkLicense
+  echo "xmlstarlet sel -t -m Server/Service/Connector -v @port /opt/jira/atlassian-jira-5.1.4-standalone/conf/server.xml"
 }
 
 function createDatabase() {
@@ -473,6 +488,7 @@ if [ ${JOB_UPDATE} -eq 1 ] ; then
 fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
+  installTools
   deployLatestJava
   installApache
   createCerts
@@ -482,6 +498,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     createCredentials ${APP}
     setEnvirement ${APP}
     deployLatestBin ${APP}
+    configTomcatProxy ${APP}
     setFixes ${APP}
     startApp ${APP}
     createVhost ${APP}
