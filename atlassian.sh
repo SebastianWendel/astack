@@ -11,6 +11,8 @@
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
 # check if running by root
+# addadd  init script
+# remove stash.json.2 after each run
 # restore procedure
 # dedicated data path
 # check java bin arch
@@ -140,8 +142,7 @@ function checkFilesystem() {
 function installTools() {
   if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
     for PKG in ${PKG_DEBIAN} ; do
-      dpkg -s ${PKG} > /dev/null 2>&1
-      if [ ! $? == "0" ] ; then 
+      if [ ! $(dpkg -s ${PKG} > /dev/null 2>&1) ] ; then 
         apt-get install -y ${PKG} >/dev/null 2>&1
       fi
     done
@@ -150,8 +151,7 @@ function installTools() {
 
 function installApache() {
   if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
-    dpkg -l ${PKG} > /dev/null 2>&1
-    if [ ! $? == "0" ] ; then 
+    if [ ! $(dpkg -s apache2 > /dev/null 2>&1) ] ; then 
       apt-get install -y apache2 >/dev/null 2>&1
     fi 
     a2enmod proxy ssl rewrite >/dev/null 2>&1
