@@ -27,8 +27,6 @@ DESTINATION="/opt"
 TEMP="/tmp"
 LOGFILE="atlassian-setup.log"
 DOMAIN="example.org"
-PKG_DEBIAN="xmlstarlet"
-PKG_REDHAT=""
 
 #-----------------------------------------------------------------------------------------------------
 # script usage
@@ -59,6 +57,8 @@ JOB_INSTALL=0
 JOB_PURGE=0
 VERSION_NOW=0
 VERSION_UPDATE=0
+PKG_DEBIAN="openssl git xmlstarlet"
+PKG_REDHAT=""
 
 #-----------------------------------------------------------------------------------------------------
 # control structure
@@ -154,11 +154,28 @@ function installApache() {
     if [ ! $(dpkg -s apache2 > /dev/null 2>&1) ] ; then 
       apt-get install -y apache2 >/dev/null 2>&1
     fi 
-    a2enmod proxy ssl rewrite >/dev/null 2>&1
-    if [ ! $(grep "NameVirtualHost *:443" /etc/apache2/ports.conf) ] ; then
+    a2enmod proxy proxy_http ssl rewrite >/dev/null 2>&1
+    if [ ! $(grep "NameVirtualHost \*:443" /etc/apache2/ports.conf | grep -v "#" >/dev/null 2>&1) ] ; then
       echo "NameVirtualHost *:443" >> /etc/apache2/ports.conf
     fi
     service apache2 restart >/dev/null 2>&1
+  fi
+}
+
+function installMySQL() {
+  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+    dpkg -s mysql-server >/dev/null 2>&1
+    if [ ! ${?} == "0" ] ; then 
+      DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server >/dev/null 2>&1
+      export MYSQL_PASS=$(openssl rand -base64 16);
+      mysql -uroot -e "UPDATE mysql.user SET password=PASSWORD('${MYSQL_PASS}') WHERE user='root'; FLUSH PRIVILEGES;"; >/dev/null 2>&1
+    else
+      read -p "Please enter MySQL password: " MYSQL_PASS
+    fi
+    export MYSQL_PASS=${MYSQL_PASS}
+    echo "#################################################"
+    echo "# MySQL root password: ${MYSQL_PASS}"
+    echo "#################################################"
   fi
 }
 
@@ -223,7 +240,7 @@ function createVhost() {
   RewriteLog        ${APACHE_LOG_DIR}/${1}-rewrite.log
   RewriteRule       ^/?$ https://%{HTTP_HOST}/${1}/ [R,L]
 
-  ProxyRequests Off
+  ProxyRequests     Off
   ProxyPreserveHost On
    
   <Proxy *>
@@ -231,8 +248,6 @@ function createVhost() {
     Allow from all
   </Proxy>
         
-#  ProxyPass         / http://0.0.0.0:${TOMCAT_PORT}
-#  ProxyPassReverse  / http://0.0.0.0:${TOMCAT_PORT}
   ProxyPass         /${1} http://0.0.0.0:${TOMCAT_PORT}/${1}
   ProxyPassReverse  /${1} http://0.0.0.0:${TOMCAT_PORT}/${1}
 
@@ -318,7 +333,7 @@ function setEnvirement() {
 function purgeCredentials() {
   id -u ${1} >/dev/null 2>&1
   if [ $? -eq 0 ] ; then
-    userdel -f ${1}
+    userdel -f ${1} >/dev/null 2>&1
   fi
 }
 
@@ -329,15 +344,7 @@ function purgeJava() {
 }
 
 function killApp() {
-  if [ ${1} == "crowd" ] ; then
-    PID_FILE="${DESTINATION}/crowd/current/apache-tomcat/work/catalina.pid"
-  else
-    PID_FILE="${DESTINATION}/${1}/current/work/catalina.pid"
-  fi
-  if [ -f ${PID_FILE} ] ; then
-    PID=$(cat ${PID_FILE})
-    kill -9 ${PID} >/dev/null 2>&1
-  fi
+  kill -9 $(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}') >/dev/null 2>&1
 }
 
 function startApp() {
@@ -368,8 +375,7 @@ function deployLatestJava() {
 }
 
 function deployLatestBin() {
-  wget https://my.atlassian.com/download/feeds/current/${1}.json -P ${TEMP} >/dev/null 2>&1
-  BIN_URL=$(cat ${TEMP}/${1}.json | grep -Po '"zipUrl":.*?[^\\]",'  | grep tar.gz | grep -v cluster | grep -v "\-war." | cut -d"\"" -f4)
+  BIN_URL=$(wget -qO- https://my.atlassian.com/download/feeds/current/${1}.json | grep -Po '"zipUrl":.*?[^\\]",'  | grep tar.gz | grep -v cluster | grep -v "\-war." | cut -d"\"" -f4)
   FILE_NAME=$(echo ${BIN_URL} | cut -d"/" -f8 )
   FOLDER_NAME=${FILE_NAME%.tar.gz}
   if [ ! -f ${TEMP}/${FILE_NAME} ] ; then
@@ -390,7 +396,7 @@ function configTomcatProxy() {
     xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "/${1}" ${TOMCAT_CONFIG}
     if [ ! $(xmlstarlet sel -t -m Server/Service/Connector -v @proxyName ${TOMCAT_CONFIG})] ; then
       xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${1}.${DOMAIN} ${TOMCAT_CONFIG}
-#      xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyPort -v 443 ${TOMCAT_CONFIG}
+      xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyPort -v 80 ${TOMCAT_CONFIG}
     fi
   fi
 }
@@ -491,6 +497,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
   installTools
   deployLatestJava
   installApache
+  installMySQL
   createCerts
   for APP in ${APPS}; do
     echo "INSTALL ${APP}"
@@ -499,7 +506,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     setEnvirement ${APP}
     deployLatestBin ${APP}
     configTomcatProxy ${APP}
-    setFixes ${APP}
+    #setFixes ${APP}
     startApp ${APP}
     createVhost ${APP}
   done
@@ -514,12 +521,6 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
     purgeFolders ${APP}
     purgeVhost ${APP}
   done
-fi 
+fi
 
-#log ${DESTINATION}
-#log ${DISTRO}
-#log ${ARCH}
-
-#-----------------------------------------------------------------------------------------------------
-# notes
-#-----------------------------------------------------------------------------------------------------
+unset MYSQL_PASS
