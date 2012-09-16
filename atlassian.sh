@@ -12,12 +12,10 @@
 #-----------------------------------------------------------------------------------------------------
 # check if running by root
 # addadd  init script
-# remove stash.json.2 after each run
 # restore procedure
 # dedicated data path
 # check java bin arch
 # check java jre free download
-# Check application home folders
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
