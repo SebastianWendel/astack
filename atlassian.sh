@@ -277,27 +277,6 @@ function purgeVhost() {
   fi 
 }
 
-function installMysql() {
-  #deb http://repo.percona.com/apt VERSION main
-  #deb-src http://repo.percona.com/apt VERSION main
-  #apt-get update
-  #apt-get install percona-server-server-5.5 percona-server-client-5.5 percona-xtrabackup
-  
-  
-  #rpm -Uhv http://www.percona.com/downloads/percona-release/percona-release-0.0-1.x86_64.rpm
-  #rpm -Uhv http://www.percona.com/downloads/percona-release/percona-release-0.0-1.i386.rpm
-  #yum install -y percona-xtrabackup percona-server-server-55-5 percona-server-client-55-5
-  
-  #cat <<MYSQL_PRESEED | debconf-set-selections
-  #mysql-server-5.1 mysql-server/root_password password $MYSQL_PASS
-  #mysql-server-5.1 mysql-server/root_password_again password $MYSQL_PASS
-  #mysql-server-5.1 mysql-server/start_on_boot boolean true
-  #MYSQL_PRESEED
-  DEBIAN_FRONTEND=noninteractive apt-get install -f -y mysql-server
-  echo "MySQL Password set to '${MYSQL_PASS}'. Remember to delete ~/.mysql.passwd" | tee ~/.mysql.passwd;
-  service mysqld restart
-}
-
 function createFolders() {
   if [ ! -d ${DESTINATION}/${1} ] ; then
     mkdir ${DESTINATION}/${1}
@@ -402,13 +381,19 @@ function configTomcatProxy() {
 }
 
 
+function setHomes() {
+  if [ ${1} == "crowd" ]; then
+    echo "${1}.home=${DESTINATION}/${1}/data" > ${DESTINATION}/${1}/current/${1}-webapp/WEB-INF/classes/${1}-init.properties
+  elif [ ${1} == "confluence" ]; then
+    echo "${1}.home=${DESTINATION}/${1}/data" > ${DESTINATION}/${1}/current/${1}/WEB-INF/classes/${1}-init.properties
+  elif [ ${1} == "jira" ]; then
+    echo "${1}.home=${DESTINATION}/${1}/data" > ${DESTINATION}/${1}/current/atlassian-${1}/WEB-INF/classes/${1}-application.properties
+  fi
+}
+
 function setFixes() {
-  #/opt/crowd/current/crowd-webapp/WEB-INF/classes/crowd-init.properties:#crowd.home=c:/data/crowd-home
-  #/opt/confluence/current/confluence/WEB-INF/classes/confluence-init.properties:# confluence.home=/var/data/confluence/
-  #/opt/jira/current/atlassian-jira/WEB-INF/classes/jira-application.properties
   #find ${DESTINATION}/${1} -name server.xml -exec sed 's/Host name="localhost"/Host name="127.0.0.1"/g' -i {} \; 
   #find ${DESTINATION}/${1} -name server.xml -exec sed 's/Engine name="Standalone" defaultHost="localhost"/Engine name="Standalone" defaultHost="127.0.0.1"/g' -i {} \; 
-  find ${DESTINATION}/${1}/current -name ${1}-\*.properties -exec sed 's|# ${1}.home=/var/${1}/|${1}.home=${DESTINATION}/${1}/data/|g' -i {} \;
   if [ ${1} == "crowd" ] ; then
     if [ -f "${DESTINATION}/crowd/current/apache-tomcat/bin/setenv.sh" ] ; then
       if [ ! $(grep CATALINA_PID "${DESTINATION}/crowd/current/apache-tomcat/bin/setenv.sh") ] ; then
@@ -506,7 +491,8 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     setEnvirement ${APP}
     deployLatestBin ${APP}
     configTomcatProxy ${APP}
-    #setFixes ${APP}
+    setHomes ${APP}
+    setFixes ${APP}
     startApp ${APP}
     createVhost ${APP}
   done
