@@ -11,7 +11,7 @@
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
 # check if running by root
-# addadd  init script
+# addadd init script
 # restore procedure
 # dedicated data path
 # check java bin arch
@@ -124,7 +124,12 @@ case $(uname -m) in
     ARCH=?
     ;;
 esac
-  
+
+if [ "$(id -u)" != "0" ]; then
+  echo "This script must be run as root" 1>&2
+  exit 1
+fi
+
 #-----------------------------------------------------------------------------------------------------
 # functions
 #-----------------------------------------------------------------------------------------------------
