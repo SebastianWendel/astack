@@ -170,15 +170,34 @@ function installMySQL() {
     dpkg -s mysql-server >/dev/null 2>&1
     if [ ! ${?} == "0" ] ; then 
       DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server >/dev/null 2>&1
-      export MYSQL_PASS=$(openssl rand -base64 16);
+      export MYSQL_PASS=$(openssl rand -base64 18)
       mysql -uroot -e "UPDATE mysql.user SET password=PASSWORD('${MYSQL_PASS}') WHERE user='root'; FLUSH PRIVILEGES;"; >/dev/null 2>&1
-    else
-      read -p "Please enter MySQL password: " MYSQL_PASS
+      echo "MySQL root password: ${MYSQL_PASS}"
     fi
-    export MYSQL_PASS=${MYSQL_PASS}
-    echo "#################################################"
-    echo "# MySQL root password: ${MYSQL_PASS}"
-    echo "#################################################"
+  fi
+}
+
+function createDatabase() {
+  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+    dpkg -s mysql-server >/dev/null 2>&1
+    if [ ${?} == "0" ] ; then
+      if [ ! -n "${MYSQL_PASS}" ]; then
+        read -p "Please enter MySQL password: " MYSQL_PASS
+        export MYSQL_PASS=${MYSQL_PASS}
+        echo "MySQL root password: ${MYSQL_PASS}"
+      fi
+    fi
+  fi 
+  if ! mysql -u root -p${MYSQL_PASS} -Bse "USE '${1}'" >/dev/null 2>&1 ; then
+    PASSWORD=$(openssl rand -base64 18)
+    Q1="CREATE DATABASE IF NOT EXISTS ${1};"
+    Q2="GRANT ALL ON *.* TO '${1}'@'localhost' IDENTIFIED BY '${PASSWORD}';"
+    Q3="FLUSH PRIVILEGES;"
+    SQL="${Q1}${Q2}${Q3}"
+    mysql -u root -p${MYSQL_PASS} -Bse "${SQL}"
+    echo "Created database ${1} password: ${PASSWORD}"
+  else
+    echo "Could not create Database ${1}, maybe it alredy exists!"
   fi
 }
 
@@ -443,20 +462,6 @@ function checkLicense() {
   echo "xmlstarlet sel -t -m Server/Service/Connector -v @port /opt/jira/atlassian-jira-5.1.4-standalone/conf/server.xml"
 }
 
-function createDatabase() {
-  #if ! ${MYSQL} -u ${NAME_APP} -e "use ${NAME_APP}"; then
-  #  PASSWORD_SET=$(openssl rand -base64 32 | sha256sum | head -c 32 ; echo)
-    #while read_dom; do
-    #  if [[ $ENTITY = "Key" ]] ; then
-    #     echo $CONTENT
-    #  fi
-    #done < input.xml
-    echo "installMysql" | tee ~/.mysql.passwd
-  #else
-  #  PASSWORD_GET=(cat ${FOLDER_HOME}\conf\dbconfig.xml | sed -e 's%(^<password>|</password>$)%%g')
-  #fi
-}
-
 function createLogrotate() {
   echo "deployLatestBin"
 }
@@ -485,10 +490,10 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
   installTools
   deployLatestJava
   installApache
-  installMySQL
   createCerts
+  installMySQL
   for APP in ${APPS}; do
-    echo "INSTALL ${APP}"
+    createDatabase ${APP}
     createFolders ${APP}
     createCredentials ${APP}
     setEnvirement ${APP}
@@ -498,18 +503,19 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     setFixes ${APP}
     startApp ${APP}
     createVhost ${APP}
+    echo "INSTALLED ${APP}"
   done
 fi 
 
 if [ ${JOB_PURGE} -eq 1 ] ; then
   purgeJava
   for APP in ${APPS}; do
-    echo "PURGE ${APP}"
     killApp ${APP}
     purgeCredentials ${APP}
     purgeFolders ${APP}
     purgeVhost ${APP}
+    echo "PURGED ${APP}"
   done
 fi
 
-unset MYSQL_PASS
+#unset MYSQL_PASS
