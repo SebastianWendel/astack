@@ -182,9 +182,17 @@ function createDatabase() {
     dpkg -s mysql-server >/dev/null 2>&1
     if [ ${?} == "0" ] ; then
       if [ ! -n "${MYSQL_PASS}" ]; then
-        read -p "Please enter MySQL password: " MYSQL_PASS
+        unset MYSQL_PASS
+        PROMPT="Please enter MySQL password: "
+        while IFS= read -p "${PROMPT}" -r -s -n 1 CHAR ; do
+          if [[ ${CHAR} == $'\0' ]] ; then
+            break
+          fi
+          PROMPT='*'
+          MYSQL_PASS+="${CHAR}"
+        done
+        echo
         export MYSQL_PASS=${MYSQL_PASS}
-        echo "MySQL root password: ${MYSQL_PASS}"
       fi
     fi
   fi 
