@@ -10,7 +10,7 @@
 #-----------------------------------------------------------------------------------------------------
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
-# check if running by root
+# network timeout
 # addadd init script
 # restore procedure
 # dedicated data path
@@ -21,7 +21,9 @@
 # configuration (only this section can be changed)
 #-----------------------------------------------------------------------------------------------------
 APPS="crowd confluence jira stash"
-DESTINATION="/opt"
+PATH_DEST="/opt"
+PATH_BACKUP="${PATH_DEST}/backup"
+PATH_JDK="/atlassian"
 TEMP="/tmp"
 LOGFILE="atlassian-setup.log"
 DOMAIN="example.org"
@@ -49,9 +51,11 @@ ERROR="FEHLER: Ein oder mehrere Vorraussetzungen wurden nicht erfüllt!\n"
 #-----------------------------------------------------------------------------------------------------
 # variable
 #-----------------------------------------------------------------------------------------------------
-STAMP_TIME=$(date +%Y%m%d-%H%M%S)
+TIMESTAMP=$(date +%Y%m%d%H%M%S)
 JOB_UPDATE=0
 JOB_INSTALL=0
+JOB_BACKUP=0
+JOB_RESTORE=0
 JOB_PURGE=0
 VERSION_NOW=0
 VERSION_UPDATE=0
@@ -66,8 +70,10 @@ if [ $# -gt 0 ] ; then
     case $1 in
       -u|--update)      JOB_UPDATE=1 ;;
       -i|--install)     JOB_INSTALL=1 ;;
+      -b|--backup)      JOB_BACKUP=1 ;;
+      -r|--restore)     JOB_RESTORE=1 ;;
       -p|--purge)       JOB_PURGE=1 ;;
-      -d|--destination) shift; DESTINATION=$1 ;;
+      -d|--destination) shift; PATH_DEST=$1 ;;
       -x|--debug)       shift; set -x ;;
       -h|-?|--help)     printf "${USAGE}"; exit ;;
       *)                printf "\nERROR: Unknown Option \"$1\" !\n"; printf "\n${USAGE}"; exit 1;;
@@ -76,10 +82,10 @@ if [ $# -gt 0 ] ; then
     [ $# -eq 0 ] && break
   done
 fi
-if [ "${JOB_UPDATE}" == "0" ] && [ "${JOB_INSTALL}" == "0" ] && [ "${JOB_PURGE}" == "0" ] ; then
-  printf "${ERROR}"
-  exit 1
-fi
+#if [ "${JOB_UPDATE}" == "0" ] && [ "${JOB_INSTALL}" == "0" ] && [ "${JOB_PURGE}" == "0" ] ; then
+#  printf "${ERROR}"
+#  exit 1
+#fi
 
 #-----------------------------------------------------------------------------------------------------
 # environment
@@ -135,7 +141,7 @@ fi
 #-----------------------------------------------------------------------------------------------------
 function log() {
   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-  printf "${TIMESTAMP} $1\n" >> "${DESTINATION}\${LOGFILE}" 2>&1
+  printf "${TIMESTAMP} $1\n" >> "${PATH_DEST}\${LOGFILE}" 2>&1
 }
 
 function checkFilesystem() {
@@ -183,7 +189,7 @@ function createDatabase() {
     if [ ${?} == "0" ] ; then
       if [ ! -n "${MYSQL_PASS}" ]; then
         unset MYSQL_PASS
-        PROMPT="Please enter MySQL password: "
+        PROMPT="Please enter MySQL root password: "
         while IFS= read -p "${PROMPT}" -r -s -n 1 CHAR ; do
           if [[ ${CHAR} == $'\0' ]] ; then
             break
@@ -225,7 +231,7 @@ function createCerts() {
 }
 
 function createVhost() {
-  TOMCAT_CONFIG=$(find ${DESTINATION}/${1} -name server.xml)
+  TOMCAT_CONFIG=$(find ${PATH_DEST}/${1} -name server.xml)
   TOMCAT_PORT=$(xmlstarlet sel -t -m Server/Service/Connector -v @port ${TOMCAT_CONFIG})
   if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
     VHOST_FILE="/etc/apache2/sites-available/${1}"
@@ -308,14 +314,17 @@ function purgeVhost() {
 }
 
 function createFolders() {
-  if [ ! -d ${DESTINATION}/${1} ] ; then
-    mkdir ${DESTINATION}/${1}
+  if [ ! -d ${PATH_DEST}/${1} ] ; then
+    mkdir -p ${PATH_DEST}/${1}
+  fi
+  if [ ! -d ${PATH_BACKUP} ] ; then
+    mkdir -p ${PATH_BACKUP}
   fi
 }
 
 function purgeFolders() {
-  if [ -d ${DESTINATION}/${1} ] ; then
-    rm -rf ${DESTINATION}/${1}
+  if [ -d ${PATH_DEST}/${1} ] ; then
+    rm -rf ${PATH_DEST}/${1}
   fi
 }
 
@@ -323,17 +332,17 @@ function createCredentials() {
   id -u ${1} > /dev/null 2>&1
   if [ $? -eq 1 ] ; then
     groupadd ${1}
-    useradd -s /bin/bash -r -m -g ${1} -d ${DESTINATION}/${1}/data ${1}
+    useradd -s /bin/bash -r -m -g ${1} -d ${PATH_DEST}/${1}/data ${1}
   fi
 }
 
 function setEnvirement() {
-  if [ -f "${DESTINATION}/${1}/data/.profile" ] ; then
-    if [ ! $(grep JAVA_HOME "${DESTINATION}/${1}/data/.profile") ] ; then
-      echo "export JAVA_HOME=${DESTINATION}/java/current" >> "${DESTINATION}/${1}/data/.profile"
-      echo "export PATH=$PATH:${DESTINATION}/java/current/bin" >> "${DESTINATION}/${1}/data/.profile"
+  if [ -f "${PATH_DEST}/${1}/data/.profile" ] ; then
+    if [ ! $(grep JAVA_HOME "${PATH_DEST}/${1}/data/.profile") ] ; then
+      echo "export JAVA_HOME=${PATH_DEST}/java/current" >> "${PATH_DEST}/${1}/data/.profile"
+      echo "export PATH=$PATH:${PATH_DEST}/java/current/bin" >> "${PATH_DEST}/${1}/data/.profile"
       if [ ${1} == "stash" ] ; then
-        echo "export STASH_HOME=${DESTINATION}/stash/data" >> "${DESTINATION}/${1}/data/.profile"
+        echo "export STASH_HOME=${PATH_DEST}/stash/data" >> "${PATH_DEST}/${1}/data/.profile"
       fi
     fi
   fi
@@ -347,8 +356,8 @@ function purgeCredentials() {
 }
 
 function purgeJava() {
-  if [ -d "${DESTINATION}/java" ] ; then
-    rm -rf "${DESTINATION}/java"
+  if [ -d "${PATH_DEST}/java" ] ; then
+    rm -rf "${PATH_DEST}/java"
   fi
 }
 
@@ -356,14 +365,23 @@ function killApp() {
   kill -9 $(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}') >/dev/null 2>&1
 }
 
+function stopApp() {
+  PID=$(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}')
+  if [ ! "x${PID}" == "x" ] ; then
+    while ps ef ${PID} ; do
+      kill ${PID} >/dev/null 2>&1
+      sleep 2
+    done
+  fi
+}
+
 function startApp() {
-  if [ ${1} == "crowd" ] ; then
-    if [ ! -f "${DESTINATION}/crowd/current/apache-tomcat/work/catalina.pid" ] ; then
-      su ${1} -l -c "${DESTINATION}/crowd/current/start_crowd.sh >/dev/null 2>&1"
-    fi
-  else
-    if [ ! -f "${DESTINATION}/${1}/current/work/catalina.pid" ] ; then
-      su ${1} -l -c "${DESTINATION}/${1}/current/bin/start-${1}.sh >/dev/null 2>&1"
+  PID=$(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}')
+  if [ "x${PID}" == "x" ] ; then
+    if [ ${1} == "crowd" ] ; then
+      su ${1} -l -c "${PATH_DEST}/crowd/current/start_crowd.sh >/dev/null 2>&1"
+    else
+      su ${1} -l -c "${PATH_DEST}/${1}/current/bin/start-${1}.sh >/dev/null 2>&1"
     fi
   fi
 }
@@ -372,13 +390,13 @@ function deployLatestJava() {
   if [ -f ${TEMP}/jdk-*-linux-*.tar.gz ] ; then
     JAVA_BIN=$(ls ${TEMP}/jdk-*-linux-*.tar.gz)
     JAVA_NAME=$(tar ztvf ${JAVA_BIN} | head -n 1 | awk '{print $6}' | cut -d"/" -f1)
-    if [ ! -d "${DESTINATION}/java" ] ; then
-      mkdir "${DESTINATION}/java"
+    if [ ! -d "${PATH_DEST}/java" ] ; then
+      mkdir "${PATH_DEST}/java"
     fi
-    if [ ! -d "${DESTINATION}/java/${JAVA_NAME}" ] ; then
-      tar -xzvf ${JAVA_BIN} -C "${DESTINATION}/java" >/dev/null 2>&1
-      ln -fs "${DESTINATION}/java/${JAVA_NAME}" ${DESTINATION}/java/current
-      chown -R root:root ${DESTINATION}/java/current/
+    if [ ! -d "${PATH_DEST}/java/${JAVA_NAME}" ] ; then
+      tar -xzvf ${JAVA_BIN} -C "${PATH_DEST}/java" >/dev/null 2>&1
+      ln -fs "${PATH_DEST}/java/${JAVA_NAME}" ${PATH_DEST}/java/current
+      chown -R root:root ${PATH_DEST}/java/current/
     fi
   fi
 }
@@ -390,17 +408,17 @@ function deployLatestBin() {
   if [ ! -f ${TEMP}/${FILE_NAME} ] ; then
     wget ${BIN_URL} -P /tmp >/dev/null 2>&1
   fi
-  tar -xzvf ${TEMP}/${FILE_NAME} -C ${DESTINATION}/${1} >/dev/null 2>&1
+  tar -xzvf ${TEMP}/${FILE_NAME} -C ${PATH_DEST}/${1} >/dev/null 2>&1
   if [ ${1} == "jira" ] ; then
-    ln -fs "${DESTINATION}/${1}/${FOLDER_NAME}-standalone" ${DESTINATION}/${1}/current
+    ln -fs "${PATH_DEST}/${1}/${FOLDER_NAME}-standalone" ${PATH_DEST}/${1}/current
   else
-    ln -fs ${DESTINATION}/${1}/${FOLDER_NAME} ${DESTINATION}/${1}/current
+    ln -fs ${PATH_DEST}/${1}/${FOLDER_NAME} ${PATH_DEST}/${1}/current
   fi
-  chown -R ${1}:${1} "${DESTINATION}/${1}/current/"
+  chown -R ${1}:${1} "${PATH_DEST}/${1}/current/"
 }
 
 function configTomcatProxy() {
-  TOMCAT_CONFIG=$(find ${DESTINATION}/${1} -name server.xml)
+  TOMCAT_CONFIG=$(find ${PATH_DEST}/${1} -name server.xml)
   if [ -f ${TOMCAT_CONFIG} ] ; then 
     xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "/${1}" ${TOMCAT_CONFIG}
     if [ ! $(xmlstarlet sel -t -m Server/Service/Connector -v @proxyName ${TOMCAT_CONFIG})] ; then
@@ -413,21 +431,21 @@ function configTomcatProxy() {
 
 function setHomes() {
   if [ ${1} == "crowd" ]; then
-    echo "${1}.home=${DESTINATION}/${1}/data" > ${DESTINATION}/${1}/current/${1}-webapp/WEB-INF/classes/${1}-init.properties
+    echo "${1}.home=${PATH_DEST}/${1}/data" > ${PATH_DEST}/${1}/current/${1}-webapp/WEB-INF/classes/${1}-init.properties
   elif [ ${1} == "confluence" ]; then
-    echo "${1}.home=${DESTINATION}/${1}/data" > ${DESTINATION}/${1}/current/${1}/WEB-INF/classes/${1}-init.properties
+    echo "${1}.home=${PATH_DEST}/${1}/data" > ${PATH_DEST}/${1}/current/${1}/WEB-INF/classes/${1}-init.properties
   elif [ ${1} == "jira" ]; then
-    echo "${1}.home=${DESTINATION}/${1}/data" > ${DESTINATION}/${1}/current/atlassian-${1}/WEB-INF/classes/${1}-application.properties
+    echo "${1}.home=${PATH_DEST}/${1}/data" > ${PATH_DEST}/${1}/current/atlassian-${1}/WEB-INF/classes/${1}-application.properties
   fi
 }
 
 function setFixes() {
-  #find ${DESTINATION}/${1} -name server.xml -exec sed 's/Host name="localhost"/Host name="127.0.0.1"/g' -i {} \; 
-  #find ${DESTINATION}/${1} -name server.xml -exec sed 's/Engine name="Standalone" defaultHost="localhost"/Engine name="Standalone" defaultHost="127.0.0.1"/g' -i {} \; 
+  #find ${PATH_DEST}/${1} -name server.xml -exec sed 's/Host name="localhost"/Host name="127.0.0.1"/g' -i {} \; 
+  #find ${PATH_DEST}/${1} -name server.xml -exec sed 's/Engine name="Standalone" defaultHost="localhost"/Engine name="Standalone" defaultHost="127.0.0.1"/g' -i {} \; 
   if [ ${1} == "crowd" ] ; then
-    if [ -f "${DESTINATION}/crowd/current/apache-tomcat/bin/setenv.sh" ] ; then
-      if [ ! $(grep CATALINA_PID "${DESTINATION}/crowd/current/apache-tomcat/bin/setenv.sh") ] ; then
-        cat >> ${DESTINATION}/crowd/current/apache-tomcat/bin/setenv.sh << 'EOF'
+    if [ -f "${PATH_DEST}/crowd/current/apache-tomcat/bin/setenv.sh" ] ; then
+      if [ ! $(grep CATALINA_PID "${PATH_DEST}/crowd/current/apache-tomcat/bin/setenv.sh") ] ; then
+        cat >> ${PATH_DEST}/crowd/current/apache-tomcat/bin/setenv.sh << 'EOF'
 # set the location of the pid file
 if [ -z "$CATALINA_PID" ] ; then
     if [ -n "$CATALINA_BASE" ] ; then
@@ -466,10 +484,6 @@ EOF
   fi
 }
 
-function checkLicense() {
-  echo "xmlstarlet sel -t -m Server/Service/Connector -v @port /opt/jira/atlassian-jira-5.1.4-standalone/conf/server.xml"
-}
-
 function createLogrotate() {
   echo "deployLatestBin"
 }
@@ -478,13 +492,17 @@ function backupDatabase() {
   echo "mysqldump"
 }
 
-function backupData() { 
-  ${TAR} -zcvf prog-1-jan-2005.tar.gz /home/jerry/prog
+function backupData() {
+  if [ -d "${PATH_DEST}/${1}" ] && [ -d ${PATH_BACKUP} ] ; then
+    tar -zcf ${PATH_BACKUP}/${1}_backup_${TIMESTAMP}.tgz ${PATH_DEST}/${1} >/dev/null 2>&1
+  fi
 }
 
 function restoreLatestData() {
+  NEWESTFILE=`ls | awk -F_ '{print $1 $2}' | sort -n -k 2,2 | tail -1`
   find ${FOLDER_BACKUP} -name ${BACKUP} -mtime ...
   tar -zxvf prog-1-jan-2005.tar.gz -C /home/jerry/prog
+  filename="db_daily_"`eval date +%Y%m%d`".tgz"
 }
 
 #-----------------------------------------------------------------------------------------------------
@@ -515,6 +533,20 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
   done
 fi 
 
+if [ ${JOB_BACKUP} -eq 1 ] ; then
+  for APP in ${APPS}; do
+    stopApp ${APP}
+    backupData ${APP}
+    startApp ${APP}
+  done
+fi
+
+if [ ${JOB_RESTORE} -eq 1 ] ; then
+  for APP in ${APPS}; do
+    backupData ${APP}
+  done
+fi
+
 if [ ${JOB_PURGE} -eq 1 ] ; then
   purgeJava
   for APP in ${APPS}; do
@@ -526,4 +558,4 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
   done
 fi
 
-#unset MYSQL_PASS
+unset MYSQL_PASS
