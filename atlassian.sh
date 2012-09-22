@@ -492,7 +492,7 @@ function backupDatabase() {
 function backupData() {
   if [ -d "${PATH_DEST}/${1}" ] && [ -d ${PATH_BACKUP} ] ; then
     tar -zcf ${PATH_BACKUP}/${1}_backup_${TIMESTAMP}.tgz ${PATH_DEST}/${1} >/dev/null 2>&1
-    for FILE in $(ls -tl ${PATH_BACKUP}/${1}_backup_*.tgz | head -n-${MAXBACKUPS}) ; do 
+    for FILE in $(ls ${PATH_BACKUP}/${1}_backup_*.tgz | head -n-${MAXBACKUPS}) ; do 
       rm -f ${FILE} >/dev/null 2>&1
     done
   fi
