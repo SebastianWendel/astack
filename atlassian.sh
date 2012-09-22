@@ -361,14 +361,10 @@ function purgeJava() {
   fi
 }
 
-function killApp() {
-  kill -9 $(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}') >/dev/null 2>&1
-}
-
 function stopApp() {
   PID=$(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}')
   if [ ! "x${PID}" == "x" ] ; then
-    while ps ef ${PID} ; do
+    while ps ef ${PID} >/dev/null 2>&1 ; do
       kill ${PID} >/dev/null 2>&1
       sleep 2
     done
@@ -550,7 +546,7 @@ fi
 if [ ${JOB_PURGE} -eq 1 ] ; then
   purgeJava
   for APP in ${APPS}; do
-    killApp ${APP}
+    stopApp ${APP}
     purgeCredentials ${APP}
     purgeFolders ${APP}
     purgeVhost ${APP}
