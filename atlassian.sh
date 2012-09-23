@@ -10,6 +10,8 @@
 #-----------------------------------------------------------------------------------------------------
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
+# cp /atlassian/jdk-7u7-linux-x64.tar.gz /tmp
+# /atlassian/atlassian.sh -p && aptitude purge -y mysql-server && rm -rf /var/lib/mysql/
 # network timeout
 # addadd init script
 # restore procedure
@@ -184,6 +186,22 @@ function installMySQL() {
   fi
 }
 
+function deployDriverJDBC() {
+  BIN_NAME=$(wget -qO- http://dev.mysql.com/downloads/connector/j/ | grep "<td class=\"sub-text\">(" | grep "tar.gz" | cut -d"(" -f2 | cut -d")" -f1)
+  if [ ! -f ${TEMP}/${BIN_NAME} ] ; then
+    wget http://dev.mysql.com/get/Downloads/Connector-J/${BIN_NAME}/from/http://cdn.mysql.com/ -O ${TEMP}/${BIN_NAME} >/dev/null 2>&1
+    tar xzf ${TEMP}/${BIN_NAME} -C ${TEMP} >/dev/null 2>&1
+  fi
+  find ${PATH_DEST}/${1} -name mysql-connector-java-*.jar | xargs rm -f >/dev/null 2>&1
+  if [ ${1} == "crowd" ] ; then
+    cp ${TEMP}/${BIN_NAME%.tar.gz}/${BIN_NAME%.tar.gz}-bin.jar ${PATH_DEST}/${1}/current/apache-tomcat/lib >/dev/null 2>&1
+    chown ${1}:${1} ${PATH_DEST}/${1}/current/apache-tomcat/lib/${BIN_NAME%.tar.gz}-bin.jar
+  else
+    cp ${TEMP}/${BIN_NAME%.tar.gz}/${BIN_NAME%.tar.gz}-bin.jar ${PATH_DEST}/${1}/current/lib >/dev/null 2>&1
+    chown ${1}:${1} ${PATH_DEST}/${1}/current/lib/${BIN_NAME%.tar.gz}-bin.jar
+  fi
+}
+
 function createDatabase() {
   if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
     dpkg -s mysql-server >/dev/null 2>&1
@@ -205,7 +223,7 @@ function createDatabase() {
   fi 
   if ! mysql -u root -p${MYSQL_PASS} -Bse "USE '${1}'" >/dev/null 2>&1 ; then
     PASSWORD=$(openssl rand -base64 18)
-    Q1="CREATE DATABASE IF NOT EXISTS ${1} CHARACTER SET utf8 COLLATE utf8_general_ci;"
+    Q1="CREATE DATABASE IF NOT EXISTS ${1} CHARACTER SET utf8 COLLATE utf8_bin;"
     Q2="GRANT ALL ON *.* TO '${1}'@'localhost' IDENTIFIED BY '${PASSWORD}';"
     Q3="FLUSH PRIVILEGES;"
     SQL="${Q1}${Q2}${Q3}"
@@ -394,7 +412,10 @@ function deployLatestJava() {
       tar -xzvf ${JAVA_BIN} -C "${PATH_DEST}/java" >/dev/null 2>&1
       ln -fs "${PATH_DEST}/java/${JAVA_NAME}" ${PATH_DEST}/java/current
       chown -R root:root ${PATH_DEST}/java/current/
-    fi
+    fi 
+  else
+    echo "no java jdk found in ${TEMP}, installer will exit now!"
+    exit 1
   fi
 }
 
@@ -403,7 +424,7 @@ function deployLatestBin() {
   FILE_NAME=$(echo ${BIN_URL} | cut -d"/" -f8 )
   FOLDER_NAME=${FILE_NAME%.tar.gz}
   if [ ! -f ${TEMP}/${FILE_NAME} ] ; then
-    wget ${BIN_URL} -P /tmp >/dev/null 2>&1
+    wget ${BIN_URL} -P ${TEMP} >/dev/null 2>&1
   fi
   tar -xzvf ${TEMP}/${FILE_NAME} -C ${PATH_DEST}/${1} >/dev/null 2>&1
   if [ ${1} == "jira" ] ; then
@@ -513,8 +534,8 @@ if [ ${JOB_UPDATE} -eq 1 ] ; then
 fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
-  installTools
   deployLatestJava
+  installTools
   installApache
   createCerts
   installMySQL
@@ -524,6 +545,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     createCredentials ${APP}
     setEnvirement ${APP}
     deployLatestBin ${APP}
+    deployDriverJDBC ${APP}
     configTomcatProxy ${APP}
     setHomes ${APP}
     setFixes ${APP}
