@@ -205,7 +205,7 @@ function createDatabase() {
   fi 
   if ! mysql -u root -p${MYSQL_PASS} -Bse "USE '${1}'" >/dev/null 2>&1 ; then
     PASSWORD=$(openssl rand -base64 18)
-    Q1="CREATE DATABASE IF NOT EXISTS ${1};"
+    Q1="CREATE DATABASE IF NOT EXISTS ${1} CHARACTER SET utf8 COLLATE utf8_general_ci;"
     Q2="GRANT ALL ON *.* TO '${1}'@'localhost' IDENTIFIED BY '${PASSWORD}';"
     Q3="FLUSH PRIVILEGES;"
     SQL="${Q1}${Q2}${Q3}"
