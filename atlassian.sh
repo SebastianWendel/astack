@@ -12,6 +12,11 @@
 #-----------------------------------------------------------------------------------------------------
 # cp /atlassian/jdk-7u7-linux-x64.tar.gz /tmp
 # /atlassian/atlassian.sh -p && aptitude purge -y mysql-server && rm -rf /var/lib/mysql/
+# /opt/java/current/jre/bin/keytool -import -trustcacerts -keystore /opt/java/current/jre/lib/security/cacerts -storepass changeit -noprompt -alias "example.org" -file /etc/ssl/certs/example.org.pem
+# add support for bamboo
+# add support for fisheye
+# check if exists add partitial install
+# add certification handling
 # network timeout
 # addadd init script
 # restore procedure
