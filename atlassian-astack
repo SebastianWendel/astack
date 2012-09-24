@@ -1,17 +1,24 @@
 #!/bin/bash
 #-----------------------------------------------------------------------------------------------------
 # File:         atlassian-astack
-# Description:  xxxxxxxxxxxxxxxxxxxxxxx
+# Description:  install, update and backup atlassian products
 # Plattform:    Red-Hat,CentOS,Debian,Ubuntu
 # Created:      01.09.2012
-# Licens:       
 # Author:       Sebastian Wendel, evobyte IT-Services, Hamburg/Germany
+# License:      Apache License, Version 2.0
 #-----------------------------------------------------------------------------------------------------
 
 #-----------------------------------------------------------------------------------------------------
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
 # /atlassian/atlassian.sh -p && aptitude purge -y mysql-server && rm -rf /var/lib/mysql/
+# * database backup procedure
+# * restore procedure
+# * appserver memory calculation
+# * appserver run on localhost
+# * jira proxy path issue
+# * mail server configuration
+# full usage output
 # add support for bamboo
 # add support for fisheye
 # add support for crucible
@@ -20,11 +27,12 @@
 # network timeout
 # domain parameters
 # application parameteres
-# memory calculation
-# mail server configuration
-# * restore procedure
 # check 32bit distributions
 # check redhat distributions
+# check debian distributions
+# add propper logging
+# add propper output
+# add install password file
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
@@ -32,7 +40,6 @@
 APPS="crowd confluence jira stash"
 PATH_DEST="/opt"
 PATH_BACKUP="${PATH_DEST}/backup"
-PATH_JDK="/atlassian"
 TEMP="/tmp"
 LOGFILE="atlassian-setup.log"
 DOMAIN="example.org"
@@ -155,7 +162,10 @@ function log() {
 }
 
 function checkFilesystem() {
-  echo "installMysql"
+  if [ $(df ${PATH_DEST} | grep -v Filesystem | awk '{print $4}') -lt 1024000 ] ; then
+    echo "there is not enothe filesystem space to procedure, script will exit!"
+    exit 1
+  fi
 }
 
 function installTools() {
@@ -403,11 +413,8 @@ function stopApp() {
 function startApp() {
   PID=$(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}')
   if [ "x${PID}" == "x" ] ; then
-    if [ ${1} == "crowd" ] ; then
-      su ${1} -l -c "${PATH_DEST}/crowd/current/start_crowd.sh >/dev/null 2>&1"
-    else
-      su ${1} -l -c "${PATH_DEST}/${1}/current/bin/start-${1}.sh >/dev/null 2>&1"
-    fi
+    SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name start\*.sh)
+    su ${1} -l -c "${SCRIPT_START=$} >/dev/null 2>&1"
   fi
 }
 
@@ -420,8 +427,8 @@ function deployLatestJava() {
   elif [ ${ARCH} -eq 32 ] ; then
     DOWNLOAD=$(wget -qO- http://www.java.com/en/download/manual.jsp | grep "title=\" Download Java software for Linux\" href" | grep -v RPM | uniq | awk -F"href=\"" '{print $2}' | awk -F"\" onclick" '{print $1}')
   fi
-  if [ -f /tmp/jre-linux.tar.gz ] ; then
-    rm -f /tmp/jre-linux.tar.gz
+  if [ -f ${TEMP}/jre-linux.tar.gz ] ; then
+    rm -f ${TEMP}/jre-linux.tar.gz
   fi
   wget ${DOWNLOAD} -O ${TEMP}/jre-linux.tar.gz >/dev/null 2>&1
   JAVA_VERSION=$(gunzip -c ${TEMP}/jre-linux.tar.gz | tar t | head -1 | cut -d"/" -f1)
@@ -430,7 +437,7 @@ function deployLatestJava() {
     ln -fs ${PATH_DEST}/java/${JAVA_VERSION} ${PATH_DEST}/java/current
     chown -R root:root ${PATH_DEST}/java/current/
   fi
-  rm -f /tmp/jre-linux.tar.gz
+  rm -f ${TEMP}/jre-linux.tar.gz
 }
 
 function deployLatestBin() {
@@ -459,7 +466,6 @@ function configTomcatProxy() {
     fi
   fi
 }
-
 
 function setHomes() {
   if [ ${1} == "crowd" ]; then
@@ -535,8 +541,8 @@ function backupData() {
 
 function deployInitScript() {
   if [ ! -f /etc/init.d/${1} ] ; then
-    SCRIPT_START=$(find /opt/${1}/current/ -name start\*.sh)
-    SCRIPT_STOP=$(find /opt/${1}/current/ -name stop\*.sh)
+    SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name start\*.sh)
+    SCRIPT_STOP=$(find ${PATH_DEST}/${1}/current/ -name stop\*.sh)
     HELPER_VARIABLE='$1'
     cat >> /etc/init.d/${1} << EOF
 #!/bin/sh -e
