@@ -10,7 +10,6 @@
 #-----------------------------------------------------------------------------------------------------
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
-# cp /atlassian/jdk-7u7-linux-x64.tar.gz /tmp
 # /atlassian/atlassian.sh -p && aptitude purge -y mysql-server && rm -rf /var/lib/mysql/
 # * /opt/java/current/jre/bin/keytool -import -trustcacerts -keystore /opt/java/current/jre/lib/security/cacerts -storepass changeit -noprompt -alias "example.org" -file /etc/ssl/certs/example.org.pem
 # add support for bamboo
@@ -25,8 +24,6 @@
 # mail server configuration
 # * addadd init script
 # * restore procedure
-# * check java bin arch
-# * check java jre free download
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
@@ -252,9 +249,12 @@ function createCerts() {
   if [ ! $(which openssl) ] ; then 
     apt-get install -y apache2 >/dev/null 2>&1
   fi 
-  if [[ ! -f  ${SSL_FOLDER}/${DOMAIN}.key && ${SSL_FOLDER}/${DOMAIN}.pem ]] ; then
+  if [ ! -f  ${SSL_FOLDER}/${DOMAIN}.key ] && [ ! ${SSL_FOLDER}/${DOMAIN}.pem ] ; then
     openssl genrsa > ${SSL_FOLDER}/${DOMAIN}.key
     openssl req -new -x509 -key ${SSL_FOLDER}/${DOMAIN}.key -out ${SSL_FOLDER}/${DOMAIN}.pem -days 3650
+    if [ -f ${PATH_DEST}/java/current/keytool ] ; then
+      ${PATH_DEST}/java/current/keytool -import -trustcacerts -keystore ${PATH_DEST}/java/current/lib/security/cacerts -storepass changeit -noprompt -alias "${DOMAIN}" -file ${SSL_FOLDER}/${DOMAIN}.pem
+    fi
   fi
 }
 
@@ -548,24 +548,24 @@ fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
   deployLatestJava
-  #installTools
-  #installApache
-  #createCerts
-  #installMySQL
-  #for APP in ${APPS}; do
-  #  createDatabase ${APP}
-  #  createFolders ${APP}
-  #  createCredentials ${APP}
-  #  setEnvirement ${APP}
-  #  deployLatestBin ${APP}
-  #  deployDriverJDBC ${APP}
-  #  configTomcatProxy ${APP}
-  #  setHomes ${APP}
-  #  setFixes ${APP}
-  #  startApp ${APP}
-  #  createVhost ${APP}
-  #  echo "INSTALLED ${APP}"
-  #done
+  installTools
+  installApache
+  createCerts
+  installMySQL
+  for APP in ${APPS}; do
+    createDatabase ${APP}
+    createFolders ${APP}
+    createCredentials ${APP}
+    setEnvirement ${APP}
+    deployLatestBin ${APP}
+    deployDriverJDBC ${APP}
+    configTomcatProxy ${APP}
+    setHomes ${APP}
+    setFixes ${APP}
+    startApp ${APP}
+    createVhost ${APP}
+    echo "INSTALLED ${APP}"
+  done
 fi 
 
 if [ ${JOB_BACKUP} -eq 1 ] ; then
