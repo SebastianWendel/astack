@@ -1,10 +1,11 @@
 #!/bin/bash
 #-----------------------------------------------------------------------------------------------------
-# File:         atlassian.sh
+# File:         atlassian-astack
 # Description:  xxxxxxxxxxxxxxxxxxxxxxx
 # Plattform:    Red-Hat,CentOS,Debian,Ubuntu
 # Created:      01.09.2012
-# Author:       Sebastian Wendel, evobyte IT-Services Hamburg
+# Licens:       
+# Author:       Sebastian Wendel, evobyte IT-Services, Hamburg/Germany
 #-----------------------------------------------------------------------------------------------------
 
 #-----------------------------------------------------------------------------------------------------
@@ -21,7 +22,6 @@
 # application parameteres
 # memory calculation
 # mail server configuration
-# * addadd init script
 # * restore procedure
 # check 32bit distributions
 # check redhat distributions
