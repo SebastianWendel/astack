@@ -11,7 +11,6 @@
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
 # /atlassian/atlassian.sh -p && aptitude purge -y mysql-server && rm -rf /var/lib/mysql/
-# * /opt/java/current/jre/bin/keytool -import -trustcacerts -keystore /opt/java/current/jre/lib/security/cacerts -storepass changeit -noprompt -alias "example.org" -file /etc/ssl/certs/example.org.pem
 # add support for bamboo
 # add support for fisheye
 # add support for crucible
@@ -24,6 +23,8 @@
 # mail server configuration
 # * addadd init script
 # * restore procedure
+# check 32bit distributions
+# check redhat distributions
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
@@ -68,7 +69,7 @@ JOB_RESTORE=0
 JOB_PURGE=0
 VERSION_NOW=0
 VERSION_UPDATE=0
-PKG_DEBIAN="openssl git xmlstarlet"
+PKG_DEBIAN="git xmlstarlet"
 PKG_REDHAT=""
 
 #-----------------------------------------------------------------------------------------------------
@@ -247,14 +248,14 @@ function createCerts() {
     SSL_FOLDER="/etc/ssl/certs" # have to be determined
   fi 
   if [ ! $(which openssl) ] ; then 
-    apt-get install -y apache2 >/dev/null 2>&1
+    apt-get install -y openssl >/dev/null 2>&1
   fi 
-  if [ ! -f  ${SSL_FOLDER}/${DOMAIN}.key ] && [ ! ${SSL_FOLDER}/${DOMAIN}.pem ] ; then
+  if [ ! -f ${SSL_FOLDER}/${DOMAIN}.key ] && [ ! -f ${SSL_FOLDER}/${DOMAIN}.pem ] ; then
     openssl genrsa > ${SSL_FOLDER}/${DOMAIN}.key
     openssl req -new -x509 -key ${SSL_FOLDER}/${DOMAIN}.key -out ${SSL_FOLDER}/${DOMAIN}.pem -days 3650
-    if [ -f ${PATH_DEST}/java/current/keytool ] ; then
-      ${PATH_DEST}/java/current/keytool -import -trustcacerts -keystore ${PATH_DEST}/java/current/lib/security/cacerts -storepass changeit -noprompt -alias "${DOMAIN}" -file ${SSL_FOLDER}/${DOMAIN}.pem
-    fi
+  fi
+  if [ -f ${PATH_DEST}/java/current/lib/security/cacerts ] ; then
+    ${PATH_DEST}/java/current/bin/keytool -import -trustcacerts -keystore ${PATH_DEST}/java/current/lib/security/cacerts -storepass changeit -noprompt -alias "${DOMAIN}" -file ${SSL_FOLDER}/${DOMAIN}.pem >/dev/null 2>&1
   fi
 }
 
@@ -532,6 +533,60 @@ function backupData() {
   fi
 }
 
+function deployInitScript() {
+  if [ ! -f /etc/init.d/${1} ] ; then
+    SCRIPT_START=$(find /opt/${1}/current/ -name start\*.sh)
+    SCRIPT_STOP=$(find /opt/${1}/current/ -name stop\*.sh)
+    HELPER_VARIABLE='$1'
+    cat >> /etc/init.d/${1} << EOF
+#!/bin/sh -e
+# ${1} startup script
+#chkconfig: 2345 80 05
+#description: ${1}
+ 
+export JAVA_HOME=${PATH_DEST}/java/current
+ 
+case "${HELPER_VARIABLE}" in
+  # Start command
+  start)
+    echo "Starting ${1}"
+    /bin/su ${1} -l -c "${SCRIPT_START} &> /dev/null"
+    ;;
+  # Stop command
+  stop)
+    echo "Stopping ${1}"
+    /bin/su ${1} -l -c "${SCRIPT_STOP} &> /dev/null"
+    echo " stopped successfully"
+    ;;
+  # Restart command
+  restart)
+    /etc/init.d/${1} stop
+    sleep 5
+    /etc/init.d/${1} start
+    ;;
+  *)
+    echo "Usage: /etc/init.d/${1} {start|restart|stop}"
+    exit 1
+    ;;
+esac
+ 
+exit 0
+EOF
+    chmod +x /etc/init.d/${1} >/dev/null 2>&1
+  fi
+  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
+    update-rc.d ${1} defaults >/dev/null 2>&1
+  elif [ ${DISTRO} == "redhat" ] ; then
+    chkconfig --add ${1} >/dev/null 2>&1
+  fi
+}
+
+function purgeInitScript() {
+  if [ -f /etc/init.d/${1} ] ; then
+    rm -f /etc/init.d/${1}
+  fi
+}
+
 function restoreLatestData() {
   NEWESTFILE=`ls | awk -F_ '{print $1 $2}' | sort -n -k 2,2 | tail -1`
   find ${FOLDER_BACKUP} -name ${BACKUP} -mtime ...
@@ -543,6 +598,8 @@ function restoreLatestData() {
 # function calls
 #-----------------------------------------------------------------------------------------------------
 if [ ${JOB_UPDATE} -eq 1 ] ; then
+  deployLatestJava
+  createCerts
   echo "UPDATE TEST"
 fi
 
@@ -558,6 +615,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     createCredentials ${APP}
     setEnvirement ${APP}
     deployLatestBin ${APP}
+    deployInitScript ${APP}
     deployDriverJDBC ${APP}
     configTomcatProxy ${APP}
     setHomes ${APP}
@@ -588,6 +646,7 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
     stopApp ${APP}
     purgeCredentials ${APP}
     purgeFolders ${APP}
+    purgeInitScript ${APP}
     purgeVhost ${APP}
     echo "PURGED ${APP}"
   done
