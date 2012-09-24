@@ -12,17 +12,21 @@
 #-----------------------------------------------------------------------------------------------------
 # cp /atlassian/jdk-7u7-linux-x64.tar.gz /tmp
 # /atlassian/atlassian.sh -p && aptitude purge -y mysql-server && rm -rf /var/lib/mysql/
-# /opt/java/current/jre/bin/keytool -import -trustcacerts -keystore /opt/java/current/jre/lib/security/cacerts -storepass changeit -noprompt -alias "example.org" -file /etc/ssl/certs/example.org.pem
+# * /opt/java/current/jre/bin/keytool -import -trustcacerts -keystore /opt/java/current/jre/lib/security/cacerts -storepass changeit -noprompt -alias "example.org" -file /etc/ssl/certs/example.org.pem
 # add support for bamboo
 # add support for fisheye
+# add support for crucible
 # check if exists add partitial install
 # add certification handling
 # network timeout
-# addadd init script
-# restore procedure
-# dedicated data path
-# check java bin arch
-# check java jre free download
+# domain parameters
+# application parameteres
+# memory calculation
+# mail server configuration
+# * addadd init script
+# * restore procedure
+# * check java bin arch
+# * check java jre free download
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
@@ -407,21 +411,25 @@ function startApp() {
 }
 
 function deployLatestJava() {
-  if [ -f ${TEMP}/jdk-*-linux-*.tar.gz ] ; then
-    JAVA_BIN=$(ls ${TEMP}/jdk-*-linux-*.tar.gz)
-    JAVA_NAME=$(tar ztvf ${JAVA_BIN} | head -n 1 | awk '{print $6}' | cut -d"/" -f1)
-    if [ ! -d "${PATH_DEST}/java" ] ; then
-      mkdir "${PATH_DEST}/java"
-    fi
-    if [ ! -d "${PATH_DEST}/java/${JAVA_NAME}" ] ; then
-      tar -xzvf ${JAVA_BIN} -C "${PATH_DEST}/java" >/dev/null 2>&1
-      ln -fs "${PATH_DEST}/java/${JAVA_NAME}" ${PATH_DEST}/java/current
-      chown -R root:root ${PATH_DEST}/java/current/
-    fi 
-  else
-    echo "no java jdk found in ${TEMP}, installer will exit now!"
-    exit 1
+  if [ ! -d "${PATH_DEST}/java" ] ; then
+    mkdir "${PATH_DEST}/java"
   fi
+  if [ ${ARCH} -eq 64 ] ; then
+    DOWNLOAD=$(wget -qO- http://www.java.com/en/download/manual.jsp | grep "title=\" Download Java software for Linux x64\" href" | grep -v RPM | uniq | awk -F"href=\"" '{print $2}' | awk -F"\" onclick" '{print $1}')
+  elif [ ${ARCH} -eq 32 ] ; then
+    DOWNLOAD=$(wget -qO- http://www.java.com/en/download/manual.jsp | grep "title=\" Download Java software for Linux\" href" | grep -v RPM | uniq | awk -F"href=\"" '{print $2}' | awk -F"\" onclick" '{print $1}')
+  fi
+  if [ -f /tmp/jre-linux.tar.gz ] ; then
+    rm -f /tmp/jre-linux.tar.gz
+  fi
+  wget ${DOWNLOAD} -O ${TEMP}/jre-linux.tar.gz >/dev/null 2>&1
+  JAVA_VERSION=$(gunzip -c ${TEMP}/jre-linux.tar.gz | tar t | head -1 | cut -d"/" -f1)
+  if [ ! -d ${PATH_DEST}/java/${JAVA_VERSION} ] ; then
+    tar -xzf ${TEMP}/jre-linux.tar.gz -C "${PATH_DEST}/java" >/dev/null 2>&1
+    ln -fs ${PATH_DEST}/java/${JAVA_VERSION} ${PATH_DEST}/java/current
+    chown -R root:root ${PATH_DEST}/java/current/
+  fi
+  rm -f /tmp/jre-linux.tar.gz
 }
 
 function deployLatestBin() {
@@ -540,24 +548,24 @@ fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
   deployLatestJava
-  installTools
-  installApache
-  createCerts
-  installMySQL
-  for APP in ${APPS}; do
-    createDatabase ${APP}
-    createFolders ${APP}
-    createCredentials ${APP}
-    setEnvirement ${APP}
-    deployLatestBin ${APP}
-    deployDriverJDBC ${APP}
-    configTomcatProxy ${APP}
-    setHomes ${APP}
-    setFixes ${APP}
-    startApp ${APP}
-    createVhost ${APP}
-    echo "INSTALLED ${APP}"
-  done
+  #installTools
+  #installApache
+  #createCerts
+  #installMySQL
+  #for APP in ${APPS}; do
+  #  createDatabase ${APP}
+  #  createFolders ${APP}
+  #  createCredentials ${APP}
+  #  setEnvirement ${APP}
+  #  deployLatestBin ${APP}
+  #  deployDriverJDBC ${APP}
+  #  configTomcatProxy ${APP}
+  #  setHomes ${APP}
+  #  setFixes ${APP}
+  #  startApp ${APP}
+  #  createVhost ${APP}
+  #  echo "INSTALLED ${APP}"
+  #done
 fi 
 
 if [ ${JOB_BACKUP} -eq 1 ] ; then
