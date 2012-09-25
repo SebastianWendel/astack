@@ -2,7 +2,7 @@
 #-----------------------------------------------------------------------------------------------------
 # File:         atlassian-astack
 # Description:  install, update and backup atlassian products
-# Plattform:    Red-Hat,CentOS,Debian,Ubuntu
+# Plattform:    Red-Hat, CentOS, Debian, Ubuntu
 # Created:      01.09.2012
 # Author:       Sebastian Wendel, evobyte IT-Services, Hamburg/Germany
 # License:      Apache License, Version 2.0
@@ -18,7 +18,12 @@
 # * appserver run on localhost
 # * jira proxy path issue
 # * mail server configuration
+# refactore with application context /
+# add logrotade script
 # full usage output
+# add script banner
+# check free filesystem space
+# check free memory space
 # add support for bamboo
 # add support for fisheye
 # add support for crucible
@@ -149,7 +154,7 @@ case $(uname -m) in
 esac
 
 if [ "$(id -u)" != "0" ]; then
-  echo "This script must be run as root" 1>&2
+  echo "This script must be run as root, script will exit!" 1>&2
   exit 1
 fi
 
@@ -169,7 +174,7 @@ function checkFilesystem() {
 }
 
 function installTools() {
-  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     for PKG in ${PKG_DEBIAN} ; do
       if [ ! $(dpkg -s ${PKG} > /dev/null 2>&1) ] ; then 
         apt-get install -y ${PKG} >/dev/null 2>&1
@@ -179,7 +184,7 @@ function installTools() {
 }
 
 function installApache() {
-  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     if [ ! $(dpkg -s apache2 > /dev/null 2>&1) ] ; then 
       apt-get install -y apache2 >/dev/null 2>&1
     fi 
@@ -192,7 +197,7 @@ function installApache() {
 }
 
 function installMySQL() {
-  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     dpkg -s mysql-server >/dev/null 2>&1
     if [ ! ${?} == "0" ] ; then 
       DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server >/dev/null 2>&1
@@ -220,7 +225,7 @@ function deployDriverJDBC() {
 }
 
 function createDatabase() {
-  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     dpkg -s mysql-server >/dev/null 2>&1
     if [ ${?} == "0" ] ; then
       if [ ! -n "${MYSQL_PASS}" ]; then
@@ -252,7 +257,7 @@ function createDatabase() {
 }
 
 function createCerts() {
-  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     SSL_FOLDER="/etc/ssl/certs"
   else
     SSL_FOLDER="/etc/ssl/certs" # have to be determined
@@ -272,7 +277,7 @@ function createCerts() {
 function createVhost() {
   TOMCAT_CONFIG=$(find ${PATH_DEST}/${1} -name server.xml)
   TOMCAT_PORT=$(xmlstarlet sel -t -m Server/Service/Connector -v @port ${TOMCAT_CONFIG})
-  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     VHOST_FILE="/etc/apache2/sites-available/${1}"
     SSL_FOLDER="/etc/ssl/certs"
   else
@@ -332,7 +337,7 @@ function createVhost() {
   </Location>
 </VirtualHost>
 EOF
-  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     a2ensite ${1} >/dev/null 2>&1
     a2dissite default default-ssl >/dev/null 2>&1
     service apache2 reload >/dev/null 2>&1
@@ -342,7 +347,7 @@ EOF
 }
 
 function purgeVhost() {
-  if [[ ${DISTRO} == "Ubuntu" || "debian" ]] ; then
+  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     a2dissite ${1} >/dev/null 2>&1
     rm -f /etc/apache2/sites-available/${1} >/dev/null 2>&1
     service apache2 reload >/dev/null 2>&1
@@ -478,8 +483,6 @@ function setHomes() {
 }
 
 function setFixes() {
-  #find ${PATH_DEST}/${1} -name server.xml -exec sed 's/Host name="localhost"/Host name="127.0.0.1"/g' -i {} \; 
-  #find ${PATH_DEST}/${1} -name server.xml -exec sed 's/Engine name="Standalone" defaultHost="localhost"/Engine name="Standalone" defaultHost="127.0.0.1"/g' -i {} \; 
   if [ ${1} == "crowd" ] ; then
     if [ -f "${PATH_DEST}/crowd/current/apache-tomcat/bin/setenv.sh" ] ; then
       if [ ! $(grep CATALINA_PID "${PATH_DEST}/crowd/current/apache-tomcat/bin/setenv.sh") ] ; then
