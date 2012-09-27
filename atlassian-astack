@@ -38,6 +38,7 @@
 # add propper logging
 # add propper output
 # add install password file
+# local and multi node setup
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
@@ -419,7 +420,7 @@ function startApp() {
   PID=$(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}')
   if [ "x${PID}" == "x" ] ; then
     SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name start\*.sh)
-    su ${1} -l -c "${SCRIPT_START=$} >/dev/null 2>&1"
+    su ${1} -l -c "${SCRIPT_START} >/dev/null 2>&1"
   fi
 }
 
@@ -530,12 +531,35 @@ function createLogrotate() {
 }
 
 function backupDatabase() { 
-  echo "mysqldump"
+  if [ ${1} == "jira" ]; then
+    APP_CONFIG=$(find ${PATH_DEST}/${1}/data/ -name dbconfig.xml)
+    if [ ! "x${APP_CONFIG}" == "x" ] ; then
+      MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
+    fi
+  elif [ ${1} == "stash" ]; then
+    APP_CONFIG=$(find ${PATH_DEST}/${1}/data/ -name stash-config.properties)
+    if [ ! "x${APP_CONFIG}" == "x" ] ; then
+      MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d"=" -f2)
+    fi
+  else
+    APP_CONFIG=$(find ${PATH_DEST}/${1}/data/ -name ${1}.cfg.xml)
+    if [ ! "x${APP_CONFIG}" == "x" ] ; then
+      MYSQL_PASSWORD=$(grep hibernate.connection.password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
+    fi
+  fi
+  if [ ! "x${MYSQL_PASSWORD}" == "x" ] ; then
+    mysqldump -u${1} -p${MYSQL_PASSWORD} ${1} > ${PATH_DEST}/${1}/data/${1}_database_backup.sql
+    chown ${1}:${1} ${PATH_DEST}/${1}/data/${1}_database_backup.sql
+  else
+    echo "mysql password for ${1} cloud not be found, no database backup!"
+  fi
+  unset MYSQL_PASSWORD
 }
 
-function backupData() {
+function backupHome() {
   if [ -d "${PATH_DEST}/${1}" ] && [ -d ${PATH_BACKUP} ] ; then
     tar -zcf ${PATH_BACKUP}/${1}_backup_${TIMESTAMP}.tgz ${PATH_DEST}/${1} >/dev/null 2>&1
+    rm -f ${PATH_DEST}/${1}/data/${1}_database_backup.sql >/dev/null 2>&1
     for FILE in $(ls ${PATH_BACKUP}/${1}_backup_*.tgz | head -n-${MAXBACKUPS}) ; do 
       rm -f ${FILE} >/dev/null 2>&1
     done
@@ -638,7 +662,8 @@ fi
 if [ ${JOB_BACKUP} -eq 1 ] ; then
   for APP in ${APPS}; do
     stopApp ${APP}
-    backupData ${APP}
+    backupDatabase ${APP}
+    backupHome ${APP}
     startApp ${APP}
   done
 fi
