@@ -12,7 +12,8 @@
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
 # /atlassian/atlassian.sh -p && aptitude purge -y mysql-server && rm -rf /var/lib/mysql/
-# * database backup procedure
+# change data folder
+# 
 # * restore procedure
 # * appserver memory calculation
 # * appserver run on localhost
@@ -39,12 +40,14 @@
 # add propper output
 # add install password file
 # local and multi node setup
+# test single application install
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
 #-----------------------------------------------------------------------------------------------------
 APPS="crowd confluence jira stash"
 PATH_DEST="/opt"
+PATH_DATA="${PATH_DEST}/data"
 PATH_BACKUP="${PATH_DEST}/backup"
 TEMP="/tmp"
 LOGFILE="atlassian-setup.log"
@@ -170,7 +173,7 @@ function log() {
 function checkFilesystem() {
   if [ $(df ${PATH_DEST} | grep -v Filesystem | awk '{print $4}') -lt 1024000 ] ; then
     echo "there is not enothe filesystem space to procedure, script will exit!"
-    exit 1
+    exit
   fi
 }
 
@@ -271,7 +274,9 @@ function createCerts() {
     openssl req -new -x509 -key ${SSL_FOLDER}/${DOMAIN}.key -out ${SSL_FOLDER}/${DOMAIN}.pem -days 3650
   fi
   if [ -f ${PATH_DEST}/java/current/lib/security/cacerts ] ; then
-    ${PATH_DEST}/java/current/bin/keytool -import -trustcacerts -keystore ${PATH_DEST}/java/current/lib/security/cacerts -storepass changeit -noprompt -alias "${DOMAIN}" -file ${SSL_FOLDER}/${DOMAIN}.pem >/dev/null 2>&1
+    ${PATH_DEST}/java/current/bin/keytool -import -trustcacerts -keystore ${PATH_DEST}/java/current/lib/security/cacerts \
+                                          -storepass changeit -noprompt \
+                                          -alias "${DOMAIN}" -file ${SSL_FOLDER}/${DOMAIN}.pem >/dev/null 2>&1
   fi
 }
 
@@ -362,6 +367,9 @@ function createFolders() {
   if [ ! -d ${PATH_DEST}/${1} ] ; then
     mkdir -p ${PATH_DEST}/${1}
   fi
+  if [ ! -d ${PATH_DATA} ] ; then
+    mkdir -p ${PATH_DATA}
+  fi
   if [ ! -d ${PATH_BACKUP} ] ; then
     mkdir -p ${PATH_BACKUP}
   fi
@@ -377,17 +385,17 @@ function createCredentials() {
   id -u ${1} > /dev/null 2>&1
   if [ $? -eq 1 ] ; then
     groupadd ${1}
-    useradd -s /bin/bash -r -m -g ${1} -d ${PATH_DEST}/${1}/data ${1}
+    useradd -s /bin/bash -r -m -g ${1} -d ${PATH_DATA}/${1} ${1}
   fi
 }
 
 function setEnvirement() {
-  if [ -f "${PATH_DEST}/${1}/data/.profile" ] ; then
-    if [ ! $(grep JAVA_HOME "${PATH_DEST}/${1}/data/.profile") ] ; then
-      echo "export JAVA_HOME=${PATH_DEST}/java/current" >> "${PATH_DEST}/${1}/data/.profile"
-      echo "export PATH=$PATH:${PATH_DEST}/java/current/bin" >> "${PATH_DEST}/${1}/data/.profile"
+  if [ -f "${PATH_DATA}/${1}/.profile" ] ; then
+    if [ ! $(grep JAVA_HOME "${PATH_DATA}/${1}/.profile") ] ; then
+      echo "export JAVA_HOME=${PATH_DEST}/java/current" >> "${PATH_DATA}/${1}/.profile"
+      echo "export PATH=$PATH:${PATH_DEST}/java/current/bin" >> "${PATH_DATA}/${1}/.profile"
       if [ ${1} == "stash" ] ; then
-        echo "export STASH_HOME=${PATH_DEST}/stash/data" >> "${PATH_DEST}/${1}/data/.profile"
+        echo "export STASH_HOME=${PATH_DATA}/${1}" >> "${PATH_DATA}/${1}/.profile"
       fi
     fi
   fi
@@ -429,9 +437,15 @@ function deployLatestJava() {
     mkdir "${PATH_DEST}/java"
   fi
   if [ ${ARCH} -eq 64 ] ; then
-    DOWNLOAD=$(wget -qO- http://www.java.com/en/download/manual.jsp | grep "title=\" Download Java software for Linux x64\" href" | grep -v RPM | uniq | awk -F"href=\"" '{print $2}' | awk -F"\" onclick" '{print $1}')
+    DOWNLOAD=$(wget -qO- http://www.java.com/en/download/manual.jsp | \
+               grep "title=\" Download Java software for Linux x64\" href" | \
+               grep -v RPM | uniq | awk -F"href=\"" '{print $2}' | \
+               awk -F"\" onclick" '{print $1}')
   elif [ ${ARCH} -eq 32 ] ; then
-    DOWNLOAD=$(wget -qO- http://www.java.com/en/download/manual.jsp | grep "title=\" Download Java software for Linux\" href" | grep -v RPM | uniq | awk -F"href=\"" '{print $2}' | awk -F"\" onclick" '{print $1}')
+    DOWNLOAD=$(wget -qO- http://www.java.com/en/download/manual.jsp | \
+               grep "title=\" Download Java software for Linux\" href" | \
+               grep -v RPM | uniq | awk -F"href=\"" '{print $2}' | \
+               awk -F"\" onclick" '{print $1}')
   fi
   if [ -f ${TEMP}/jre-linux.tar.gz ] ; then
     rm -f ${TEMP}/jre-linux.tar.gz
@@ -447,7 +461,12 @@ function deployLatestJava() {
 }
 
 function deployLatestBin() {
-  BIN_URL=$(wget -qO- https://my.atlassian.com/download/feeds/current/${1}.json | grep -Po '"zipUrl":.*?[^\\]",'  | grep tar.gz | grep -v cluster | grep -v "\-war." | cut -d"\"" -f4)
+  BIN_URL=$(wget -qO- https://my.atlassian.com/download/feeds/current/${1}.json | \
+            grep -Po '"zipUrl":.*?[^\\]",'  | \
+            grep tar.gz | \
+            grep -v cluster | \
+            grep -v "\-war." | \
+            cut -d"\"" -f4)
   FILE_NAME=$(echo ${BIN_URL} | cut -d"/" -f8 )
   FOLDER_NAME=${FILE_NAME%.tar.gz}
   if [ ! -f ${TEMP}/${FILE_NAME} ] ; then
@@ -475,11 +494,11 @@ function configTomcatProxy() {
 
 function setHomes() {
   if [ ${1} == "crowd" ]; then
-    echo "${1}.home=${PATH_DEST}/${1}/data" > ${PATH_DEST}/${1}/current/${1}-webapp/WEB-INF/classes/${1}-init.properties
+    echo "${1}.home=${PATH_DATA}/${1}" > ${PATH_DEST}/${1}/current/${1}-webapp/WEB-INF/classes/${1}-init.properties
   elif [ ${1} == "confluence" ]; then
-    echo "${1}.home=${PATH_DEST}/${1}/data" > ${PATH_DEST}/${1}/current/${1}/WEB-INF/classes/${1}-init.properties
+    echo "${1}.home=${PATH_DATA}/${1}" > ${PATH_DEST}/${1}/current/${1}/WEB-INF/classes/${1}-init.properties
   elif [ ${1} == "jira" ]; then
-    echo "${1}.home=${PATH_DEST}/${1}/data" > ${PATH_DEST}/${1}/current/atlassian-${1}/WEB-INF/classes/${1}-application.properties
+    echo "${1}.home=${PATH_DATA}/${1}" > ${PATH_DEST}/${1}/current/atlassian-${1}/WEB-INF/classes/${1}-application.properties
   fi
 }
 
@@ -532,24 +551,24 @@ function createLogrotate() {
 
 function backupDatabase() { 
   if [ ${1} == "jira" ]; then
-    APP_CONFIG=$(find ${PATH_DEST}/${1}/data/ -name dbconfig.xml)
+    APP_CONFIG=$(find ${PATH_DATA}/${1}/ -name dbconfig.xml)
     if [ ! "x${APP_CONFIG}" == "x" ] ; then
       MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
     fi
   elif [ ${1} == "stash" ]; then
-    APP_CONFIG=$(find ${PATH_DEST}/${1}/data/ -name stash-config.properties)
+    APP_CONFIG=$(find ${PATH_DATA}/${1}/ -name stash-config.properties)
     if [ ! "x${APP_CONFIG}" == "x" ] ; then
       MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d"=" -f2)
     fi
   else
-    APP_CONFIG=$(find ${PATH_DEST}/${1}/data/ -name ${1}.cfg.xml)
+    APP_CONFIG=$(find ${PATH_DATA}/${1}/ -name ${1}.cfg.xml)
     if [ ! "x${APP_CONFIG}" == "x" ] ; then
       MYSQL_PASSWORD=$(grep hibernate.connection.password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
     fi
   fi
   if [ ! "x${MYSQL_PASSWORD}" == "x" ] ; then
-    mysqldump -u${1} -p${MYSQL_PASSWORD} ${1} > ${PATH_DEST}/${1}/data/${1}_database_backup.sql
-    chown ${1}:${1} ${PATH_DEST}/${1}/data/${1}_database_backup.sql
+    mysqldump -u${1} -p${MYSQL_PASSWORD} ${1} > ${PATH_DATA}/${1}/${1}_database_backup.sql
+    chown ${1}:${1} ${PATH_DATA}/${1}/${1}_database_backup.sql
   else
     echo "mysql password for ${1} cloud not be found, no database backup!"
   fi
@@ -559,7 +578,7 @@ function backupDatabase() {
 function backupHome() {
   if [ -d "${PATH_DEST}/${1}" ] && [ -d ${PATH_BACKUP} ] ; then
     tar -zcf ${PATH_BACKUP}/${1}_backup_${TIMESTAMP}.tgz ${PATH_DEST}/${1} >/dev/null 2>&1
-    rm -f ${PATH_DEST}/${1}/data/${1}_database_backup.sql >/dev/null 2>&1
+    rm -f ${PATH_DATA}/${1}/${1}_database_backup.sql >/dev/null 2>&1
     for FILE in $(ls ${PATH_BACKUP}/${1}_backup_*.tgz | head -n-${MAXBACKUPS}) ; do 
       rm -f ${FILE} >/dev/null 2>&1
     done
