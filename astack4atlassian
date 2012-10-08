@@ -41,8 +41,7 @@ PATH_DATA="${PATH_DEST}/data"
 PATH_BACKUP="${PATH_DEST}/backup"
 TEMP="/tmp"
 LOG_FILE="astack.log"
-#LOG_LEVEL='INFO'
-LOG_LEVEL='DEBUG'
+LOG_LEVEL='INFO'
 DOMAIN='example.org'
 MAXBACKUPS=14
 
@@ -96,6 +95,7 @@ if [ $# -gt 0 ] ; then
       -r|--restore)     JOB_RESTORE=1 ;;
       -p|--purge)       JOB_PURGE=1 ;;
       -d|--destination) shift; PATH_DEST=$1 ;;
+      --debug)          shift; LOG_LEVEL='DEBUG' ;;
       --alt-urls)       shift; ALT_URLS=$1 ;;
       -x|--debug)       shift; set -x ;;
       -h|-?|--help)     printf "${USAGE}"; exit ;;
@@ -171,9 +171,9 @@ fi
 function logger() {
   TIME_STAMP=$(date +'%Y-%m-%d %T')
   if [ ${1} == "INFO" ] || [ ${1} == "ERROR" ]; then
-    echo "[${TIME_STAMP}] [${1}] ${2}"
+    echo -e "[${TIME_STAMP}] [${1}]\t${2}"
   elif [ ${LOG_LEVEL} == "DEBUG" ]; then
-    echo "[${TIME_STAMP}] [${1}] ${2}"
+    echo -e "[${TIME_STAMP}] [${1}]\t${2}"
   fi
 }
 
@@ -185,6 +185,18 @@ function checkFilesystem() {
     exit 1
   else 
     logger DEBUG "There is ${FILESYSTEM_SPACE}kb space left on your destination directory ${PATH_DEST}."
+  fi
+}
+
+function checkMemoryusage() {
+  MEM_FREE=$(free | grep Mem | awk '{print $4}')
+  APPS_NUM=$(echo ${APPS} | wc -w)
+  MEM_APP=$(echo "${MEM_FREE} / ${APPS_NUM}" | bc)
+  if [ ${MEM_APP} -lt 262144 ] ; then
+    logger ERROR "There is not enothe system memory avalable to to procedure, script will exit!"
+    exit 1
+  else 
+    logger DEBUG "There is ${MEM_FREE}kb system memory avalable."
   fi
 }
 
@@ -744,6 +756,7 @@ if [ ${JOB_UPDATE} -eq 1 ] ; then
 fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
+  checkMemoryusage
   checkFilesystem
   deployLatestJava
   installTools
