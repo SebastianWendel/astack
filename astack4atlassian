@@ -24,7 +24,6 @@
 # add support for fisheye
 # add support for crucible
 # check if exists add partitial install
-# network timeout
 # domain parameters
 # application parameteres
 # check 32bit distributions
@@ -94,10 +93,10 @@ if [ $# -gt 0 ] ; then
       -b|--backup)      JOB_BACKUP=1 ;;
       -r|--restore)     JOB_RESTORE=1 ;;
       -p|--purge)       JOB_PURGE=1 ;;
-      -d|--destination) shift; PATH_DEST=$1 ;;
-      --debug)          shift; LOG_LEVEL='DEBUG' ;;
-      --alt-urls)       shift; ALT_URLS=$1 ;;
-      -x|--debug)       shift; set -x ;;
+      -x|--destination) shift; PATH_DEST=$1 ;;
+      -a|--alt-urls)    ALT_URLS=1 ;;
+      -d|--debug)       shift; LOG_LEVEL='DEBUG' ;;
+      -v|--verbose)     shift; set -x ;;
       -h|-?|--help)     printf "${USAGE}"; exit ;;
       *)                printf "\nERROR: Unknown Option \"$1\" !\n"; printf "\n${USAGE}"; exit 1;;
     esac
@@ -177,7 +176,6 @@ function logger() {
   fi
 }
 
-
 function checkFilesystem() {
   FILESYSTEM_SPACE=$(df ${PATH_DEST} | grep -vE '^Filesystem|tmpfs|cdrom' | awk '{print $4}')
   if [ ${FILESYSTEM_SPACE} -lt 1024000 ] ; then
@@ -197,6 +195,15 @@ function checkMemoryusage() {
     exit 1
   else 
     logger DEBUG "There is ${MEM_FREE}kb system memory avalable."
+  fi
+}
+
+function checkNetwork() {
+  if wget -qO- --tries=10 --timeout=5 http://www.evobyte.de/$(basename $0) &> /dev/null ; then
+    logger DEBUG "Successfully checkt network connection."
+  else
+    logger ERROR "Please check the internet configuration, something went wrong!"
+    exit 1
   fi
 }
 
@@ -750,6 +757,7 @@ function restoreLatestData() {
 #-----------------------------------------------------------------------------------------------------
 if [ ${JOB_UPDATE} -eq 1 ] ; then
   checkFilesystem
+  checkNetwork
   deployLatestJava
   createCerts
   echo "UPDATE TEST"
@@ -758,6 +766,7 @@ fi
 if [ ${JOB_INSTALL} -eq 1 ] ; then
   checkMemoryusage
   checkFilesystem
+  checkNetwork
   deployLatestJava
   installTools
   installPostfix
