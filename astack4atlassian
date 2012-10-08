@@ -12,33 +12,24 @@
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
 # /atlassian/atlassian.sh -p && aptitude purge -y mysql-server && rm -rf /var/lib/mysql/
-# change data folder
-# 
 # * restore procedure
 # * appserver memory calculation
-# * appserver run on localhost
 # * jira proxy path issue
 # refactore with application context /
 # add logrotade script
 # full usage output
 # add script banner
-# check free filesystem space
 # check free memory space
 # add support for bamboo
 # add support for fisheye
 # add support for crucible
 # check if exists add partitial install
-# add certification handling
 # network timeout
 # domain parameters
 # application parameteres
 # check 32bit distributions
 # check redhat distributions
 # check debian distributions
-# add propper logging
-# add propper output
-# add install password file
-# local and multi node setup
 # test single application install
 
 #-----------------------------------------------------------------------------------------------------
@@ -49,8 +40,10 @@ PATH_DEST="/opt"
 PATH_DATA="${PATH_DEST}/data"
 PATH_BACKUP="${PATH_DEST}/backup"
 TEMP="/tmp"
-LOGFILE="atlassian-setup.log"
-DOMAIN="example.org"
+LOG_FILE="astack.log"
+#LOG_LEVEL='INFO'
+LOG_LEVEL='DEBUG'
+DOMAIN='example.org'
 MAXBACKUPS=14
 
 #-----------------------------------------------------------------------------------------------------
@@ -73,6 +66,9 @@ ERROR="FEHLER: Ein oder mehrere Vorraussetzungen wurden nicht erfüllt!\n"
 #set -o nounset
 #set -o errexit
 
+# SET OUTPUT REDIRECTION
+exec > >(tee -a ${LOG_FILE}) 2>&1
+
 #-----------------------------------------------------------------------------------------------------
 # variable
 #-----------------------------------------------------------------------------------------------------
@@ -86,6 +82,7 @@ VERSION_NOW=0
 VERSION_UPDATE=0
 PKG_DEBIAN="git xmlstarlet"
 PKG_REDHAT=""
+ALT_URLS=0
 
 #-----------------------------------------------------------------------------------------------------
 # control structure
@@ -99,6 +96,7 @@ if [ $# -gt 0 ] ; then
       -r|--restore)     JOB_RESTORE=1 ;;
       -p|--purge)       JOB_PURGE=1 ;;
       -d|--destination) shift; PATH_DEST=$1 ;;
+      --alt-urls)       shift; ALT_URLS=$1 ;;
       -x|--debug)       shift; set -x ;;
       -h|-?|--help)     printf "${USAGE}"; exit ;;
       *)                printf "\nERROR: Unknown Option \"$1\" !\n"; printf "\n${USAGE}"; exit 1;;
@@ -161,26 +159,47 @@ if [ "$(id -u)" != "0" ]; then
   exit 1
 fi
 
+# CHECK IF SCRIPT IS ALREADY RUNNING
+if [ $(pgrep $(basename $0) | wc -l) -gt 2 ]; then
+  echo "This script is already running, script will exit now."
+  exit
+fi
+
 #-----------------------------------------------------------------------------------------------------
 # functions
 #-----------------------------------------------------------------------------------------------------
-function log() {
-  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-  printf "${TIMESTAMP} $1\n" >> "${PATH_DEST}\${LOGFILE}" 2>&1
+function logger() {
+  TIME_STAMP=$(date +'%Y-%m-%d %T')
+  if [ ${1} == "INFO" ] || [ ${1} == "ERROR" ]; then
+    echo "[${TIME_STAMP}] [${1}] ${2}"
+  elif [ ${LOG_LEVEL} == "DEBUG" ]; then
+    echo "[${TIME_STAMP}] [${1}] ${2}"
+  fi
 }
 
+
 function checkFilesystem() {
-  if [ $(df ${PATH_DEST} | grep -v Filesystem | awk '{print $4}') -lt 1024000 ] ; then
-    echo "there is not enothe filesystem space to procedure, script will exit!"
-    exit
+  FILESYSTEM_SPACE=$(df ${PATH_DEST} | grep -vE '^Filesystem|tmpfs|cdrom' | awk '{print $4}')
+  if [ ${FILESYSTEM_SPACE} -lt 1024000 ] ; then
+    logger ERROR "There is not enothe filesystem space to procedure, script will exit!"
+    exit 1
+  else 
+    logger DEBUG "There is ${FILESYSTEM_SPACE}kb space left on your destination directory ${PATH_DEST}."
   fi
 }
 
 function installTools() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     for PKG in ${PKG_DEBIAN} ; do
-      if [ ! $(dpkg -s ${PKG} > /dev/null 2>&1) ] ; then 
-        apt-get install -y ${PKG} >/dev/null 2>&1
+      if ! dpkg -s ${PKG} &> /dev/null ; then
+        apt-get update &> /dev/null
+        if apt-get install -y ${PKG} &> /dev/null ; then
+          logger DEBUG "Successfully installed tool \"${PKG}\"."
+        else
+          logger ERROR "Can't install tool \"${PKG}\", please check logfiles."
+        fi
+      else
+        logger DEBUG "Tool \"${PKG}\" is alredy installed."
       fi
     done
   fi
@@ -188,58 +207,112 @@ function installTools() {
 
 function installApache() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    if [ ! $(dpkg -s apache2 > /dev/null 2>&1) ] ; then 
-      apt-get install -y apache2 >/dev/null 2>&1
-    fi 
-    a2enmod proxy proxy_http ssl rewrite >/dev/null 2>&1
-    if [ ! $(grep "NameVirtualHost \*:443" /etc/apache2/ports.conf | grep -v "#" >/dev/null 2>&1) ] ; then
-      echo "NameVirtualHost *:443" >> /etc/apache2/ports.conf
+    if ! dpkg -s apache2 &> /dev/null ; then 
+      apt-get update &> /dev/null
+      if apt-get install -y apache2 &> /dev/null ; then
+        logger DEBUG "Successfully installed Apache Web-Server."
+      else
+        logger ERROR "Can't install Apache Web-Server, please check logs."
+      fi
+    else
+      logger DEBUG "Apache Web-server is alredy installed."
     fi
-    service apache2 restart >/dev/null 2>&1
+    if a2enmod proxy proxy_http ssl rewrite &> /dev/null ; then
+      logger DEBUG "Successfully loaded Apache Web-Server modules."
+    else
+      logger ERROR "Can't load Apache Web-Server modules, please have a look to the Apache logfiles."
+    fi
+    if ! grep "NameVirtualHost \*:443" /etc/apache2/ports.conf | grep -v "#" &> /dev/null ; then
+      echo "NameVirtualHost *:443" >> /etc/apache2/ports.conf
+      logger DEBUG "Successfully added \"NameVirtualHost *:443\" to Apache Web-Server config."
+    else
+      logger DEBUG "\"NameVirtualHost *:443\" is already in Apache Web-Server config."
+    fi
+    if service apache2 restart &> /dev/null ; then
+      logger DEBUG "Successfully restarted Apache Web-Server."
+    else
+      logger ERROR "Can't restarted Apache Web-Server, please have a look to the Apache logfiles."
+    fi
   fi
 }
 
 function installMySQL() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    dpkg -s mysql-server >/dev/null 2>&1
-    if [ ! ${?} == "0" ] ; then 
-      DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server >/dev/null 2>&1
+    if ! dpkg -s mysql-server &> /dev/null ; then 
+      apt-get update &> /dev/null
+      if DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server &> /dev/null ; then
+        logger DEBUG "Successfully installed MySQL-Server."
+      else 
+        logger ERROR "Can't install MySQL-Server, please check logs."
+      fi
       export MYSQL_PASS=$(openssl rand -base64 18)
-      mysql -uroot -e "UPDATE mysql.user SET password=PASSWORD('${MYSQL_PASS}') WHERE user='root'; FLUSH PRIVILEGES;"; >/dev/null 2>&1
-      echo "MySQL root password: ${MYSQL_PASS}"
+      if mysql -uroot -e "UPDATE mysql.user SET password=PASSWORD('${MYSQL_PASS}') WHERE user='root'; FLUSH PRIVILEGES;"; &> /dev/null ; then
+        logger INFO "Successfully set MySQL root password to: \"${MYSQL_PASS}\", please note it will be stored in the Logfile."
+      else
+        logger ERROR "Can't set MySQL-Server root password, please check logs."
+      fi
+    else
+      logger DEBUG "MySQL-Server is alredy installed."
     fi
   fi
 }
 
 function installPostfix() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    dpkg -s postfix >/dev/null 2>&1
-    if [ ! ${?} == "0" ] ; then 
-      DEBIAN_FRONTEND=noninteractive apt-get install -y postfix >/dev/null 2>&1
+    if ! dpkg -s postfix &> /dev/null ; then
+      if DEBIAN_FRONTEND=noninteractive apt-get install -y postfix &> /dev/null ; then
+        logger DEBUG "Successfully installed Postfix Mail-Server."
+      else
+        logger ERROR "Can't install Postfix Mail-Server, pleae check logfiles."
+      fi
+    else
+      logger DEBUG "Postfix Mail-Server is alredy installed."
     fi
   fi
 }
 
 function deployDriverJDBC() {
-  BIN_NAME=$(wget -qO- http://dev.mysql.com/downloads/connector/j/ | grep "<td class=\"sub-text\">(" | grep "tar.gz" | cut -d"(" -f2 | cut -d")" -f1)
-  if [ ! -f ${TEMP}/${BIN_NAME} ] ; then
-    wget http://dev.mysql.com/get/Downloads/Connector-J/${BIN_NAME}/from/http://cdn.mysql.com/ -O ${TEMP}/${BIN_NAME} >/dev/null 2>&1
-    tar xzf ${TEMP}/${BIN_NAME} -C ${TEMP} >/dev/null 2>&1
+  if ! BIN_NAME=$(wget -qO- http://dev.mysql.com/downloads/connector/j/ | grep "<td class=\"sub-text\">(" | grep "tar.gz" | cut -d"(" -f2 | cut -d")" -f1) ; then
+    logger ERROR "Can't get MySQL JDBC-Drver Version from \"http://dev.mysql.com/downloads/connector/j/\"."
+    exit 1
   fi
-  find ${PATH_DEST}/${1} -name mysql-connector-java-*.jar | xargs rm -f >/dev/null 2>&1
+  if [ ! -f ${TEMP}/${BIN_NAME} ] ; then
+    if wget http://dev.mysql.com/get/Downloads/Connector-J/${BIN_NAME}/from/http://cdn.mysql.com/ -O ${TEMP}/${BIN_NAME} &> /dev/null ; then
+      logger DEBUG "Successfully downloaded \"${BIN_NAME}\" to \"${TEMP}\"."
+    else
+      logger ERROR "Can't download \"${BIN_NAME}\", please check url \"http://dev.mysql.com/get/Downloads/Connector-J/${BIN_NAME}/from/http://cdn.mysql.com/\"."
+      exit 1
+    fi
+    if tar xzf ${TEMP}/${BIN_NAME} -C ${TEMP} &> /dev/null ; then
+      logger DEBUG "Successfully uncompress \"${BIN_NAME}\" to \"${TEMP}\"."
+    else
+      logger ERROR "Can't uncompress \"${BIN_NAME}\"."
+      exit 1
+    fi
+  fi
+  if find ${PATH_DEST}/${1} -name mysql-connector-java-*.jar | xargs rm -f &> /dev/null ; then
+    logger DEBUG "Successfully deleted old MySQL JDBC-Driver for the application \"${1}\"."
+  fi
   if [ ${1} == "crowd" ] ; then
-    cp ${TEMP}/${BIN_NAME%.tar.gz}/${BIN_NAME%.tar.gz}-bin.jar ${PATH_DEST}/${1}/current/apache-tomcat/lib >/dev/null 2>&1
-    chown ${1}:${1} ${PATH_DEST}/${1}/current/apache-tomcat/lib/${BIN_NAME%.tar.gz}-bin.jar
+    if cp ${TEMP}/${BIN_NAME%.tar.gz}/${BIN_NAME%.tar.gz}-bin.jar ${PATH_DEST}/${1}/current/apache-tomcat/lib &> /dev/null ; then
+      logger DEBUG "Successfully copied \"${BIN_NAME%.tar.gz}-bin.jar\" to \"${PATH_DEST}/${1}/current/apache-tomcat/lib\"."
+    fi
+    if chown ${1}:${1} ${PATH_DEST}/${1}/current/apache-tomcat/lib/${BIN_NAME%.tar.gz}-bin.jar &> /dev/null ; then
+      logger DEBUG "Successfully chowned \"${PATH_DEST}/${1}/current/apache-tomcat/lib/${BIN_NAME%.tar.gz}-bin.jar\" to \"${1}\"."
+    fi
   else
-    cp ${TEMP}/${BIN_NAME%.tar.gz}/${BIN_NAME%.tar.gz}-bin.jar ${PATH_DEST}/${1}/current/lib >/dev/null 2>&1
-    chown ${1}:${1} ${PATH_DEST}/${1}/current/lib/${BIN_NAME%.tar.gz}-bin.jar
+    if cp ${TEMP}/${BIN_NAME%.tar.gz}/${BIN_NAME%.tar.gz}-bin.jar ${PATH_DEST}/${1}/current/lib &> /dev/null ; then
+      logger DEBUG "Successfully copied \"${BIN_NAME%.tar.gz}-bin.jar\" to \"${PATH_DEST}/${1}/current/lib\"."
+    fi
+    if chown ${1}:${1} ${PATH_DEST}/${1}/current/lib/${BIN_NAME%.tar.gz}-bin.jar &> /dev/null ; then
+      logger DEBUG "Successfully chowned \"${PATH_DEST}/${1}/current/lib/${BIN_NAME%.tar.gz}-bin.jar\" to \"${1}\"."
+    fi
   fi
 }
 
 function createDatabase() {
-  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    dpkg -s mysql-server >/dev/null 2>&1
-    if [ ${?} == "0" ] ; then
+  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ]; then
+    if dpkg -s mysql-server &> /dev/null ; then
       if [ ! -n "${MYSQL_PASS}" ]; then
         unset MYSQL_PASS
         PROMPT="Please enter MySQL root password: "
@@ -255,16 +328,16 @@ function createDatabase() {
       fi
     fi
   fi 
-  if ! mysql -u root -p${MYSQL_PASS} -Bse "USE '${1}'" >/dev/null 2>&1 ; then
+  if ! mysql -u root -p${MYSQL_PASS} -Bse "USE '${1}'" &> /dev/null ; then
     PASSWORD=$(openssl rand -base64 18)
-    Q1="CREATE DATABASE IF NOT EXISTS ${1} CHARACTER SET utf8 COLLATE utf8_bin;"
-    Q2="GRANT ALL ON *.* TO '${1}'@'localhost' IDENTIFIED BY '${PASSWORD}';"
-    Q3="FLUSH PRIVILEGES;"
-    SQL="${Q1}${Q2}${Q3}"
-    mysql -u root -p${MYSQL_PASS} -Bse "${SQL}"
-    echo "Created database ${1} password: ${PASSWORD}"
+    SQL_CREATE="CREATE DATABASE IF NOT EXISTS ${1} CHARACTER SET utf8 COLLATE utf8_bin;"
+    SQL_GRANT="GRANT ALL ON *.* TO '${1}'@'localhost' IDENTIFIED BY '${PASSWORD}';"
+    SQL_FLUSH="FLUSH PRIVILEGES;"
+    if mysql -u root -p${MYSQL_PASS} -Bse "${SQL_CREATE}${SQL_GRANT}${SQL_FLUSH}" &> /dev/null ; then
+      logger INFO "Successfully created database \"${1}\" with password \"${PASSWORD}\""
+    fi
   else
-    echo "Could not create Database ${1}, maybe it alredy exists!"
+    logger INFO "Can't create Database \"${1}\", maybe it alredy exists!"
   fi
 }
 
@@ -291,6 +364,9 @@ function createCerts() {
 function createVhost() {
   TOMCAT_CONFIG=$(find ${PATH_DEST}/${1} -name server.xml)
   TOMCAT_PORT=$(xmlstarlet sel -t -m Server/Service/Connector -v @port ${TOMCAT_CONFIG})
+  if [ ${ALT_URLS} == 1 ]; then
+    echo "test"
+  fi
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     VHOST_FILE="/etc/apache2/sites-available/${1}"
     SSL_FOLDER="/etc/ssl/certs"
@@ -305,8 +381,8 @@ function createVhost() {
   ServerAdmin       webmaster@${DOMAIN}
   ServerSignature   Off
  
-  ErrorLog          ${APACHE_LOG_DIR}/${1}-error.log
-  CustomLog         ${APACHE_LOG_DIR}/${1}-access.log combined
+  ErrorLog          ${APACHE_LOG_DIR}/${1}_error.log
+  CustomLog         ${APACHE_LOG_DIR}/${1}_access.log combined
   LogLevel          warn
  
   RewriteEngine     On
@@ -325,13 +401,13 @@ function createVhost() {
   SSLCertificateFile ${SSL_FOLDER}/${DOMAIN}.pem
   SSLCertificateKeyFile ${SSL_FOLDER}/${DOMAIN}.key
  
-  ErrorLog          ${APACHE_LOG_DIR}/${1}-error.log
-  CustomLog         ${APACHE_LOG_DIR}/${1}-access.log combined
+  ErrorLog          ${APACHE_LOG_DIR}/${1}_error.log
+  CustomLog         ${APACHE_LOG_DIR}/${1}_access.log combined
   LogLevel          warn
 
   RewriteEngine     On
   RewriteLogLevel   0
-  RewriteLog        ${APACHE_LOG_DIR}/${1}-rewrite.log
+  RewriteLog        ${APACHE_LOG_DIR}/${1}_rewrite.log
   RewriteRule       ^/?$ https://%{HTTP_HOST}/${1}/ [R,L]
 
   ProxyRequests     Off
@@ -387,6 +463,9 @@ function purgeFolders() {
   if [ -d ${PATH_DEST}/${1} ] ; then
     rm -rf ${PATH_DEST}/${1}
   fi
+  if [ -d ${PATH_DATA} ] ; then
+    rm -rf ${PATH_DATA}
+  fi
 }
 
 function createCredentials() {
@@ -399,7 +478,7 @@ function createCredentials() {
 
 function setEnvirement() {
   if [ -f "${PATH_DATA}/${1}/.profile" ] ; then
-    if [ ! $(grep JAVA_HOME "${PATH_DATA}/${1}/.profile") ] ; then
+    if ! grep JAVA_HOME "${PATH_DATA}/${1}/.profile" >/dev/null 2>&1 ; then
       echo "export JAVA_HOME=${PATH_DEST}/java/current" >> "${PATH_DATA}/${1}/.profile"
       echo "export PATH=$PATH:${PATH_DEST}/java/current/bin" >> "${PATH_DATA}/${1}/.profile"
       if [ ${1} == "stash" ] ; then
@@ -435,8 +514,8 @@ function stopApp() {
 function startApp() {
   PID=$(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}')
   if [ "x${PID}" == "x" ] ; then
-    SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name start\*.sh)
-    su ${1} -l -c "${SCRIPT_START} >/dev/null 2>&1"
+    SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name startup.sh)
+    su ${1} -l -c "${SCRIPT_START} &> /dev/null"
   fi
 }
 
@@ -595,7 +674,7 @@ function backupHome() {
 
 function deployInitScript() {
   if [ ! -f /etc/init.d/${1} ] ; then
-    SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name start\*.sh)
+    SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name startup.sh)
     SCRIPT_STOP=$(find ${PATH_DEST}/${1}/current/ -name stop\*.sh)
     HELPER_VARIABLE='$1'
     cat >> /etc/init.d/${1} << EOF
@@ -658,12 +737,14 @@ function restoreLatestData() {
 # function calls
 #-----------------------------------------------------------------------------------------------------
 if [ ${JOB_UPDATE} -eq 1 ] ; then
+  checkFilesystem
   deployLatestJava
   createCerts
   echo "UPDATE TEST"
 fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
+  checkFilesystem
   deployLatestJava
   installTools
   installPostfix
@@ -688,6 +769,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
 fi 
 
 if [ ${JOB_BACKUP} -eq 1 ] ; then
+  checkFilesystem
   for APP in ${APPS}; do
     stopApp ${APP}
     backupDatabase ${APP}
@@ -697,6 +779,7 @@ if [ ${JOB_BACKUP} -eq 1 ] ; then
 fi
 
 if [ ${JOB_RESTORE} -eq 1 ] ; then
+  checkFilesystem
   for APP in ${APPS}; do
     backupData ${APP}
   done
