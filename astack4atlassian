@@ -1,6 +1,6 @@
 #!/bin/bash
 #-----------------------------------------------------------------------------------------------------
-# File:         atlassian-astack
+# File:         astack4atlassian
 # Description:  install, update and backup atlassian products
 # Plattform:    Red-Hat, CentOS, Debian, Ubuntu
 # Created:      01.09.2012
@@ -19,7 +19,6 @@
 # add logrotade script
 # full usage output
 # add script banner
-# check free memory space
 # add support for bamboo
 # add support for fisheye
 # add support for crucible
@@ -153,6 +152,7 @@ case $(uname -m) in
     ;;
 esac
 
+# CHECK IF SCRIPT IS RUNNING BY ROOT
 if [ "$(id -u)" != "0" ]; then
   echo "This script must be run as root, script will exit!" 1>&2
   exit 1
@@ -160,8 +160,8 @@ fi
 
 # CHECK IF SCRIPT IS ALREADY RUNNING
 if [ $(pgrep $(basename $0) | wc -l) -gt 2 ]; then
-  echo "This script is already running, script will exit now."
-  exit
+  echo "This script is already running, script will exit!"
+  exit 1
 fi
 
 #-----------------------------------------------------------------------------------------------------
@@ -182,7 +182,7 @@ function checkFilesystem() {
     logger ERROR "There is not enothe filesystem space to procedure, script will exit!"
     exit 1
   else 
-    logger DEBUG "There is ${FILESYSTEM_SPACE}kb space left on your destination directory ${PATH_DEST}."
+    logger DEBUG "There is ${FILESYSTEM_SPACE} kb space left on your destination directory ${PATH_DEST}."
   fi
 }
 
@@ -194,7 +194,7 @@ function checkMemoryusage() {
     logger ERROR "There is not enothe system memory avalable to to procedure, script will exit!"
     exit 1
   else 
-    logger DEBUG "There is ${MEM_FREE}kb system memory avalable."
+    logger DEBUG "There is ${MEM_FREE} kb of free system memory avalable."
   fi
 }
 
@@ -245,7 +245,7 @@ function installApache() {
       echo "NameVirtualHost *:443" >> /etc/apache2/ports.conf
       logger DEBUG "Successfully added \"NameVirtualHost *:443\" to Apache Web-Server config."
     else
-      logger DEBUG "\"NameVirtualHost *:443\" is already in Apache Web-Server config."
+      logger DEBUG "NameVirtualHost 443 is already in Apache Web-Server config."
     fi
     if service apache2 restart &> /dev/null ; then
       logger DEBUG "Successfully restarted Apache Web-Server."
@@ -366,17 +366,31 @@ function createCerts() {
   else
     SSL_FOLDER="/etc/ssl/certs" # have to be determined
   fi 
-  if [ ! $(which openssl) ] ; then 
-    apt-get install -y openssl >/dev/null 2>&1
+  if ! dpkg -s openssl &> /dev/null ; then
+    if apt-get install -y openssl &> /dev/null ; then
+      logger DEBUG "Successfully installed openssl."
+    fi
   fi 
   if [ ! -f ${SSL_FOLDER}/${DOMAIN}.key ] && [ ! -f ${SSL_FOLDER}/${DOMAIN}.pem ] ; then
-    openssl genrsa > ${SSL_FOLDER}/${DOMAIN}.key
-    openssl req -new -x509 -key ${SSL_FOLDER}/${DOMAIN}.key -out ${SSL_FOLDER}/${DOMAIN}.pem -days 3650
+    if openssl genrsa > ${SSL_FOLDER}/${DOMAIN}.key && openssl req -new -x509 -key ${SSL_FOLDER}/${DOMAIN}.key -out ${SSL_FOLDER}/${DOMAIN}.pem -days 3650 ; then
+      logger DEBUG "Successfully created Wildcard SSL Certificate."
+    else
+      logger ERROR "Can't create the SSL Certificate at \"${SSL_FOLDER}\"."
+    fi
   fi
   if [ -f ${PATH_DEST}/java/current/lib/security/cacerts ] ; then
-    ${PATH_DEST}/java/current/bin/keytool -import -trustcacerts -keystore ${PATH_DEST}/java/current/lib/security/cacerts \
-                                          -storepass changeit -noprompt \
-                                          -alias "${DOMAIN}" -file ${SSL_FOLDER}/${DOMAIN}.pem >/dev/null 2>&1
+    if ${PATH_DEST}/java/current/bin/keytool  -import \
+                                              -trustcacerts \
+                                              -keystore ${PATH_DEST}/java/current/lib/security/cacerts \
+                                              -storepass changeit -noprompt \
+                                              -alias "${DOMAIN}" \
+                                              -file ${SSL_FOLDER}/${DOMAIN}.pem &> /dev/null ; then
+      logger DEBUG "Successfully imported the Wildcard SSL Certificate in to Java keystore."
+    else
+      logger ERROR "Can't import the Wildcard SSL Certificate in to Java keystore."
+    fi 
+  else
+    logger ERROR "Java keystore \"${PATH_DEST}/java/current/lib/security/cacerts.\" does not exists, can't import."
   fi
 }
 
@@ -394,7 +408,8 @@ function createVhost() {
     SSL_FOLDER="/etc/ssl/certs" # have to be determined
   fi 
   APACHE_LOG_DIR='${APACHE_LOG_DIR}'
-  cat > ${VHOST_FILE} << EOF
+  if [ ! -f ${VHOST_FILE} ] ; then
+    cat > ${VHOST_FILE} << EOF
 <VirtualHost *:80>
   ServerName        ${1}.${DOMAIN}
   ServerAdmin       webmaster@${DOMAIN}
@@ -406,6 +421,7 @@ function createVhost() {
  
   RewriteEngine     On
   RewriteCond       %{HTTPS} off
+  RewriteLog        ${APACHE_LOG_DIR}/${1}_rewrite.log
   RewriteRule       (.*) https://%{HTTP_HOST}%{REQUEST_URI}
 </VirtualHost>
  
@@ -445,13 +461,21 @@ function createVhost() {
     Allow from all
   </Location>
 </VirtualHost>
-EOF
+EOF 
+    logger DEBUG "Successfully create Apache vhost \"${VHOST_FILE}\"."
+  fi
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    a2ensite ${1} >/dev/null 2>&1
-    a2dissite default default-ssl >/dev/null 2>&1
-    service apache2 reload >/dev/null 2>&1
+    if a2ensite ${1} &> /dev/null ; then
+      logger DEBUG "Successfully enabled Apache vhost \"${VHOST_FILE}\"."
+    fi
+    if a2dissite default default-ssl &> /dev/null ; then
+      logger DEBUG "Successfully disabled Apache vhost \"default default-ssl\"."
+    fi
+    if service apache2 reload &> /dev/null ; then
+      logger DEBUG "Successfully reload Apache Web-Server config."
+    fi
   else
-    service httpd reload >/dev/null 2>&1
+    service httpd reload &> /dev/null
   fi
 }
 
