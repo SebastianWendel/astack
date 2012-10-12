@@ -18,17 +18,16 @@
 # refactore with application context /
 # add logrotade script
 # full usage output
-# add script banner
 # add support for bamboo
 # add support for fisheye
 # add support for crucible
 # check if exists add partitial install
 # domain parameters
-# application parameteres
 # check 32bit distributions
 # check redhat distributions
 # check debian distributions
-# test single application install
+# test single and multi application install
+# check if mysql jdbc driver already exits and then do nothing
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
@@ -46,16 +45,18 @@ MAXBACKUPS=14
 #-----------------------------------------------------------------------------------------------------
 # script usage
 #-----------------------------------------------------------------------------------------------------
-USAGE="USAGE: ${0} [OPTIONS]...
+HEADER="$(basename $0) - comes with absolutely no warranty!"
+
+USAGE="USAGE: $(basename $0) [OPTIONS]...
 
 -d --debug:    gibt eine detaillierte Ausgebe zur verarbeitung des Skripts aus
 -h -? --help:  gibt diesen Hilfetext aus.
 
 Exit status:
  0  if OK,
- 1  if minor problems.\n\n"
+ 1  if minor problems.\n"
 
-ERROR="FEHLER: Ein oder mehrere Vorraussetzungen wurden nicht erfüllt!\n"
+ERROR="\nERROR: You need to pass a sub-command (e.g., knife SUB-COMMAND)\n"
 
 #-----------------------------------------------------------------------------------------------------
 # script behavior
@@ -92,12 +93,12 @@ if [ $# -gt 0 ] ; then
       -b|--backup)      JOB_BACKUP=1 ;;
       -r|--restore)     JOB_RESTORE=1 ;;
       -p|--purge)       JOB_PURGE=1 ;;
-      -x|--destination) shift; PATH_DEST=$1 ;;
-      -a|--alt-urls)    ALT_URLS=1 ;;
-      -d|--debug)       shift; LOG_LEVEL='DEBUG' ;;
+      -x|--destination) shift; PATH_DEST=$1;;
+      -a|--alt-urls)    ALT_URLS=1;;
+      -d|--debug)       LOG_LEVEL='DEBUG';;
       -v|--verbose)     shift; set -x ;;
-      -h|-?|--help)     printf "${USAGE}"; exit ;;
-      *)                printf "\nERROR: Unknown Option \"$1\" !\n"; printf "\n${USAGE}"; exit 1;;
+      -h|-?|--help)     echo -e "${USAGE}"; exit 2;;
+      *)                echo -e "${ERROR}\n\n${HEADER}"; exit 2;;
     esac
     shift
     [ $# -eq 0 ] && break
@@ -160,8 +161,8 @@ fi
 
 # CHECK IF SCRIPT IS ALREADY RUNNING
 if [ $(pgrep $(basename $0) | wc -l) -gt 2 ]; then
-  echo "This script is already running, script will exit!"
-  exit 1
+  echo "This script is already running, script will exit now."
+  exit
 fi
 
 #-----------------------------------------------------------------------------------------------------
@@ -170,9 +171,17 @@ fi
 function logger() {
   TIME_STAMP=$(date +'%Y-%m-%d %T')
   if [ ${1} == "INFO" ] || [ ${1} == "ERROR" ]; then
-    echo -e "[${TIME_STAMP}] [${1}]\t${2}"
+    if [ ${1} == "INFO" ]; then
+      echo -e "[${TIME_STAMP}] [${1}]  ${2}"
+    else
+      echo -e "[${TIME_STAMP}] [${1}] ${2}"
+    fi
   elif [ ${LOG_LEVEL} == "DEBUG" ]; then
-    echo -e "[${TIME_STAMP}] [${1}]\t${2}"
+    if [ ${1} == "WARN" ]; then
+      echo -e "[${TIME_STAMP}] [${1}]  ${2}"
+    else    
+      echo -e "[${TIME_STAMP}] [${1}] ${2}"
+    fi
   fi
 }
 
@@ -182,7 +191,7 @@ function checkFilesystem() {
     logger ERROR "There is not enothe filesystem space to procedure, script will exit!"
     exit 1
   else 
-    logger DEBUG "There is ${FILESYSTEM_SPACE} kb space left on your destination directory ${PATH_DEST}."
+    logger DEBUG "There is ${FILESYSTEM_SPACE}kb space left on your destination directory ${PATH_DEST}."
   fi
 }
 
@@ -194,7 +203,7 @@ function checkMemoryusage() {
     logger ERROR "There is not enothe system memory avalable to to procedure, script will exit!"
     exit 1
   else 
-    logger DEBUG "There is ${MEM_FREE} kb of free system memory avalable."
+    logger DEBUG "There is ${MEM_FREE}kb system memory avalable."
   fi
 }
 
@@ -245,7 +254,7 @@ function installApache() {
       echo "NameVirtualHost *:443" >> /etc/apache2/ports.conf
       logger DEBUG "Successfully added \"NameVirtualHost *:443\" to Apache Web-Server config."
     else
-      logger DEBUG "NameVirtualHost 443 is already in Apache Web-Server config."
+      logger DEBUG "\"NameVirtualHost *:443\" is already in Apache Web-Server config."
     fi
     if service apache2 restart &> /dev/null ; then
       logger DEBUG "Successfully restarted Apache Web-Server."
@@ -332,6 +341,7 @@ function deployDriverJDBC() {
 function createDatabase() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ]; then
     if dpkg -s mysql-server &> /dev/null ; then
+      logger DEBUG "A MySQL Database-Server Instanc is already running, ask for password and no install!"
       if [ ! -n "${MYSQL_PASS}" ]; then
         unset MYSQL_PASS
         PROMPT="Please enter MySQL root password: "
@@ -348,6 +358,7 @@ function createDatabase() {
     fi
   fi 
   if ! mysql -u root -p${MYSQL_PASS} -Bse "USE '${1}'" &> /dev/null ; then
+    logger DEBUG "MySQL Database \"${1}\" does not exists, so create it!"
     PASSWORD=$(openssl rand -base64 18)
     SQL_CREATE="CREATE DATABASE IF NOT EXISTS ${1} CHARACTER SET utf8 COLLATE utf8_bin;"
     SQL_GRANT="GRANT ALL ON *.* TO '${1}'@'localhost' IDENTIFIED BY '${PASSWORD}';"
@@ -408,7 +419,7 @@ function createVhost() {
     SSL_FOLDER="/etc/ssl/certs" # have to be determined
   fi 
   APACHE_LOG_DIR='${APACHE_LOG_DIR}'
-  if [ ! -f ${VHOST_FILE} ] ; then
+  if [ ! -f ${VHOST_FILE} ]; then
     cat > ${VHOST_FILE} << EOF
 <VirtualHost *:80>
   ServerName        ${1}.${DOMAIN}
@@ -421,7 +432,6 @@ function createVhost() {
  
   RewriteEngine     On
   RewriteCond       %{HTTPS} off
-  RewriteLog        ${APACHE_LOG_DIR}/${1}_rewrite.log
   RewriteRule       (.*) https://%{HTTP_HOST}%{REQUEST_URI}
 </VirtualHost>
  
@@ -461,61 +471,104 @@ function createVhost() {
     Allow from all
   </Location>
 </VirtualHost>
-EOF 
-    logger DEBUG "Successfully create Apache vhost \"${VHOST_FILE}\"."
+EOF
+    logger DEBUG "Created Apache vhost config for \"${1}\"."
+  else
+    logger DEBUG "Apache vhost config for \"${1}\" already exists."
   fi
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     if a2ensite ${1} &> /dev/null ; then
-      logger DEBUG "Successfully enabled Apache vhost \"${VHOST_FILE}\"."
+      logger DEBUG "Succesfully enabled apache vhost config for \"${1}\"."
+    else 
+      logger ERROR "Can't enabled apache vhost config for \"${1}\", something went wrong."
     fi
     if a2dissite default default-ssl &> /dev/null ; then
-      logger DEBUG "Successfully disabled Apache vhost \"default default-ssl\"."
+      logger DEBUG "Succesfully disable default apache vhost config."
+    else 
+      logger ERROR "Can't disable default apache vhost config."
     fi
     if service apache2 reload &> /dev/null ; then
-      logger DEBUG "Successfully reload Apache Web-Server config."
+      logger DEBUG "Succesfully reload apache vhost config."
+    else 
+      logger ERROR "Can't reload apache vhost config."
     fi
-  else
-    service httpd reload &> /dev/null
   fi
 }
 
 function purgeVhost() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    a2dissite ${1} >/dev/null 2>&1
-    rm -f /etc/apache2/sites-available/${1} >/dev/null 2>&1
-    service apache2 reload >/dev/null 2>&1
-  else
-    rm -f /etc/apache2/sites-available/${1} >/dev/null 2>&1
-    service httpd reload >/dev/null 2>&1
+    if a2dissite ${1} &> /dev/null ; then
+      logger DEBUG "Succesfully disable apache vhost config for \"${1}\"."
+      if rm -f /etc/apache2/sites-available/${1} &> /dev/null ; then
+        logger DEBUG "Succesfully removed apache vhost config for \"${1}\"."
+      fi
+      if service apache2 reload &> /dev/null ; then
+        logger DEBUG "Succesfully reload apache vhost config."
+      else 
+        logger ERROR "Can't reload apache vhost config."
+      fi
+    else
+      logger ERROR "Can't disable apache vhost config for \"${1}\"."
+    fi
   fi 
 }
 
 function createFolders() {
   if [ ! -d ${PATH_DEST}/${1} ] ; then
-    mkdir -p ${PATH_DEST}/${1}
+    if mkdir -p ${PATH_DEST}/${1} &> /dev/null ; then
+      logger DEBUG "Succesfully created folder \"${PATH_DEST}/${1}\"."
+    else
+      logger ERROR "Can't create folder \"${PATH_DEST}/${1}\"."
+    fi
+  else 
+    logger DEBUG "Folder \"${PATH_DEST}/${1}\" already exists."
   fi
   if [ ! -d ${PATH_DATA} ] ; then
-    mkdir -p ${PATH_DATA}
+    if mkdir -p ${PATH_DATA} &> /dev/null ; then
+      logger DEBUG "Succesfully created folder \"${PATH_DATA}\"."
+    else
+      logger ERROR "Can't create folder \"${PATH_DATA}\"."
+    fi
+  else 
+    logger DEBUG "Folder \"${PATH_DATA}\" already exists."
   fi
   if [ ! -d ${PATH_BACKUP} ] ; then
-    mkdir -p ${PATH_BACKUP}
+    if mkdir -p ${PATH_BACKUP} &> /dev/null ; then
+      logger DEBUG "Succesfully created folder \"${PATH_BACKUP}\"."
+    else
+      logger ERROR "Can't create folder \"${PATH_BACKUP}\"."
+    fi
+  else 
+    logger DEBUG "Folder \"${PATH_BACKUP}\" already exists."
   fi
 }
 
 function purgeFolders() {
   if [ -d ${PATH_DEST}/${1} ] ; then
-    rm -rf ${PATH_DEST}/${1}
+    if rm -rf ${PATH_DEST}/${1} &> /dev/null ; then
+      logger DEBUG "Succesfully removed folder \"${PATH_DEST}/${1}\"."
+    fi
   fi
   if [ -d ${PATH_DATA} ] ; then
-    rm -rf ${PATH_DATA}
+    if rm -rf ${PATH_DATA} &> /dev/null ; then
+      logger DEBUG "Succesfully removed folder \"${PATH_DATA}\"."
+    fi
   fi
 }
 
 function createCredentials() {
-  id -u ${1} > /dev/null 2>&1
-  if [ $? -eq 1 ] ; then
-    groupadd ${1}
-    useradd -s /bin/bash -r -m -g ${1} -d ${PATH_DATA}/${1} ${1}
+  if ! id -u ${1} &> /dev/null ; then
+    logger DEBUG "User \"${1}\" and group \"${1}\" does not exists."
+    if groupadd ${1} &> /dev/null ; then
+      logger DEBUG "Successfuly created group \"${1}\"."
+    else
+      logger ERROR "Can't created group \"${1}\"."
+    fi 
+    if useradd -s /bin/bash -r -m -g ${1} -d ${PATH_DATA}/${1} ${1} &> /dev/null ; then
+      logger DEBUG "Successfuly created user \"${1}\"."
+    else
+      logger ERROR "Can't created user \"${1}\"."
+    fi 
   fi
 }
 
@@ -527,67 +580,108 @@ function setEnvirement() {
       if [ ${1} == "stash" ] ; then
         echo "export STASH_HOME=${PATH_DATA}/${1}" >> "${PATH_DATA}/${1}/.profile"
       fi
+      logger DEBUG "Succesfully added Java envirements to \".profile\"."
     fi
+  else
+    logger ERROR "Profile of user \"${1}\" does not exits."
   fi
 }
 
 function purgeCredentials() {
-  id -u ${1} >/dev/null 2>&1
-  if [ $? -eq 0 ] ; then
-    userdel -f ${1} >/dev/null 2>&1
+  if id -u ${1} &> /dev/null ; then
+    if userdel -f ${1} &> /dev/null ; then
+      logger DEBUG "Sucessfuly deleted user \"${1}\"."
+    fi
   fi
 }
 
 function purgeJava() {
   if [ -d "${PATH_DEST}/java" ] ; then
-    rm -rf "${PATH_DEST}/java"
+    if rm -rf "${PATH_DEST}/java" ; then 
+      logger DEBUG "Sucessfuly deleted \"${PATH_DEST}/java\" folder."
+    fi
   fi
 }
 
 function stopApp() {
   PID=$(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}')
   if [ ! "x${PID}" == "x" ] ; then
-    while ps ef ${PID} >/dev/null 2>&1 ; do
-      kill ${PID} >/dev/null 2>&1
+    logger DEBUG "The \"${1}\" applications pid is \"${PID}\"."
+    while ps ef ${PID} &> /dev/null ; do
+      kill ${PID} &> /dev/null
       sleep 2
     done
+    logger DEBUG "Successfuly killes application \"${1}\" with pid \"${PID}\"."
   fi
 }
 
 function startApp() {
   PID=$(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}')
   if [ "x${PID}" == "x" ] ; then
+    logger DEBUG "The \"${1}\" applications is not running, so start it."
     SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name startup.sh)
-    su ${1} -l -c "${SCRIPT_START} &> /dev/null"
+    if su ${1} -l -c "${SCRIPT_START} &> /dev/null" ; then
+      logger DEBUG "Successfuly start application \"${1}\" with \"${SCRIPT_START}\"."
+    else 
+      logger ERROR "Can't start application \"${1}\" with \"${SCRIPT_START}\"."
+    fi
   fi
 }
 
 function deployLatestJava() {
   if [ ! -d "${PATH_DEST}/java" ] ; then
-    mkdir "${PATH_DEST}/java"
+    if mkdir "${PATH_DEST}/java" ; then
+      logger DEBUG "Sucessfully created folder \"${PATH_DEST}/java\"."
+    else
+      logger ERROR "Can't created folder \"${PATH_DEST}/java\"."
+    fi
+  else
+    logger DEBUG "Folder \"${PATH_DEST}/java\" already exit's and can't be created."
   fi
   if [ ${ARCH} -eq 64 ] ; then
     DOWNLOAD=$(wget -qO- http://www.java.com/en/download/manual.jsp | \
                grep "title=\" Download Java software for Linux x64\" href" | \
                grep -v RPM | uniq | awk -F"href=\"" '{print $2}' | \
                awk -F"\" onclick" '{print $1}')
+    logger DEBUG "Download ${ARCH}bit Version of Java."
   elif [ ${ARCH} -eq 32 ] ; then
     DOWNLOAD=$(wget -qO- http://www.java.com/en/download/manual.jsp | \
                grep "title=\" Download Java software for Linux\" href" | \
                grep -v RPM | uniq | awk -F"href=\"" '{print $2}' | \
                awk -F"\" onclick" '{print $1}')
+    logger DEBUG "Download ${ARCH}bit Version of Java."
   fi
   if [ -f ${TEMP}/jre-linux.tar.gz ] ; then
     rm -f ${TEMP}/jre-linux.tar.gz
   fi
-  wget ${DOWNLOAD} -O ${TEMP}/jre-linux.tar.gz >/dev/null 2>&1
+  if wget ${DOWNLOAD} -O ${TEMP}/jre-linux.tar.gz &> /dev/null ; then
+    logger DEBUG "Successfully download Java JRE \"${TEMP}/jre-linux.tar.gz\"."
+  else
+    logger ERROR "Can't download Java JRE from \"${DOWNLOAD}\"."
+  fi
   JAVA_VERSION=$(gunzip -c ${TEMP}/jre-linux.tar.gz | tar t | head -1 | cut -d"/" -f1)
   if [ ! -d ${PATH_DEST}/java/${JAVA_VERSION} ] ; then
-    tar -xzf ${TEMP}/jre-linux.tar.gz -C "${PATH_DEST}/java" >/dev/null 2>&1
-    ln -fs ${PATH_DEST}/java/${JAVA_VERSION} ${PATH_DEST}/java/current
-    chown -R root:root ${PATH_DEST}/java/current/
+    logger DEBUG "Java JRE ${JAVA_VERSION} does not exits at the destination folder \"${PATH_DEST}/java\"."
+    if tar -xzf ${TEMP}/jre-linux.tar.gz -C "${PATH_DEST}/java" &> /dev/null ; then
+      logger DEBUG "Successfully extract \"${TEMP}/jre-linux.tar.gz\"."
+    else
+      logger ERROR "Can't extract \"${TEMP}/jre-linux.tar.gz\" it sems to be corrupt, script will exit."
+      exit 1
+    fi
+    if ln -fs ${PATH_DEST}/java/${JAVA_VERSION} ${PATH_DEST}/java/current &> /dev/null ; then
+      logger DEBUG "Successfully set softlink \"${PATH_DEST}/java/${JAVA_VERSION}\" to \"${PATH_DEST}/java/current\"."
+    fi
   fi
-  rm -f ${TEMP}/jre-linux.tar.gz
+  if [ -L ${PATH_DEST}/java/current ] ; then
+    if chown -R root:root ${PATH_DEST}/java/current/ &> /dev/null ; then
+      logger DEBUG "Successfully chownd \"${PATH_DEST}/java/current\" to \"root\"."
+    fi
+  else
+    logger ERROR "Can't find \"${PATH_DEST}/java/current\"."
+  fi
+  if rm -f ${TEMP}/jre-linux.tar.gz &> /dev/null ; then
+    logger DEBUG "Successfully removed \"${TEMP}/jre-linux.tar.gz\" archive."
+  fi
 }
 
 function deployLatestBin() {
@@ -599,25 +693,64 @@ function deployLatestBin() {
             cut -d"\"" -f4)
   FILE_NAME=$(echo ${BIN_URL} | cut -d"/" -f8 )
   FOLDER_NAME=${FILE_NAME%.tar.gz}
-  if [ ! -f ${TEMP}/${FILE_NAME} ] ; then
-    wget ${BIN_URL} -P ${TEMP} >/dev/null 2>&1
-  fi
-  tar -xzvf ${TEMP}/${FILE_NAME} -C ${PATH_DEST}/${1} >/dev/null 2>&1
-  if [ ${1} == "jira" ] ; then
-    ln -fs "${PATH_DEST}/${1}/${FOLDER_NAME}-standalone" ${PATH_DEST}/${1}/current
+  if [ ! "x${FOLDER_NAME}" == "x" ] ; then
+    logger DEBUG "Latest availalble version is \"${FOLDER_NAME}\"."
   else
-    ln -fs ${PATH_DEST}/${1}/${FOLDER_NAME} ${PATH_DEST}/${1}/current
+    logger ERROR "Can't get version from \"https://my.atlassian.com/download/feeds/current/${1}.json\", script will exit."
+    exit 1
   fi
-  chown -R ${1}:${1} "${PATH_DEST}/${1}/current/"
+  if [ ! -f ${TEMP}/${FILE_NAME} ] ; then
+    logger "Binary of ${1} does not exists in \"${TEMP}/${FILE_NAME}\", so start download."
+    if wget ${BIN_URL} -P ${TEMP} &> /dev/null ; then
+      logger DEBUG "Successfully downloaded \"${BIN_URL}\"."
+    else
+      logger ERROR "Can't downloaded \"${BIN_URL}\", script will exit."
+    fi
+  fi
+  CHECK_VERSION=$(find ${PATH_DEST}/${1}/ -name ${FOLDER_NAME}\*) 
+  if [ "x${CHECK_VERSION}" == "x" ] ; then 
+    logger DEBUG "Version \"${FOLDER_NAME}\" does not exists, so continue."
+    if [ -f ${TEMP}/${FILE_NAME} ] ; then
+      if tar -xzvf ${TEMP}/${FILE_NAME} -C ${PATH_DEST}/${1} &> /dev/null ; then
+        logger DEBUG "Successfully uncompress \"${TEMP}/${FILE_NAME}\" to \"${PATH_DEST}/${1}\"."
+      else
+        logger ERROR "Can't uncompress \"${TEMP}/${FILE_NAME}\" to \"${PATH_DEST}/${1}\"."
+      fi
+    fi
+    if [ ${1} == "jira" ] ; then
+      ln -fs "${PATH_DEST}/${1}/${FOLDER_NAME}-standalone" ${PATH_DEST}/${1}/current
+    else
+      ln -fs ${PATH_DEST}/${1}/${FOLDER_NAME} ${PATH_DEST}/${1}/current
+    fi
+    if [ $? -eq 0 ]; then
+      logger DEBUG "Successfully set softlink to \"${PATH_DEST}/${1}/current\"."
+    else
+      logger ERROR "Can't set softlink to \"${PATH_DEST}/${1}/current\"."
+    fi
+    if [ -L ${PATH_DEST}/${1}/current ]; then
+      if chown -R ${1}:${1} "${PATH_DEST}/${1}/current/"; then
+        logger DEBUG "Successfully chownd \"${PATH_DEST}/${1}/current\"."
+      else
+        logger ERROR "Can't chown \"${PATH_DEST}/${1}/current\"."
+      fi
+    else
+      logger ERROR "Can't find \"${PATH_DEST}/${1}/current\"."
+    fi
+  else
+    logger WARN "Version \"${FOLDER_NAME}\" does already exists, so do nothing."
+  fi
 }
 
 function configTomcatProxy() {
   TOMCAT_CONFIG=$(find ${PATH_DEST}/${1} -name server.xml)
   if [ -f ${TOMCAT_CONFIG} ] ; then 
-    xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "/${1}" ${TOMCAT_CONFIG}
-    if [ ! $(xmlstarlet sel -t -m Server/Service/Connector -v @proxyName ${TOMCAT_CONFIG})] ; then
-      xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${1}.${DOMAIN} ${TOMCAT_CONFIG}
-      xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyPort -v 80 ${TOMCAT_CONFIG}
+    if ! grep ${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
+      logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" seems not to be configured."
+      xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "/${1}" ${TOMCAT_CONFIG} &> /dev/null
+      xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${1}.${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null
+      xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyPort -v 80 ${TOMCAT_CONFIG} &> /dev/null
+    else
+      logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" is already configured."
     fi
   fi
 }
@@ -632,10 +765,18 @@ function setHomes() {
   fi
 }
 
+function serverMemorycalc() {
+  #/opt/jira/current/bin/setenv.sh:JVM_MAXIMUM_MEMORY="768m"
+  #/opt/stash/current/bin/setenv.sh:JVM_MAXIMUM_MEMORY="768m"
+  #/opt/crowd/current/apache-tomcat/bin/setenv.sh:JAVA_OPTS="-Xms128m -Xmx512m
+  #/opt/confluence/current/bin/setenv.sh:JAVA_OPTS="-Xms256m -Xmx512m
+  echo mem
+}
+
 function setFixes() {
   if [ ${1} == "crowd" ] ; then
     if [ -f "${PATH_DEST}/crowd/current/apache-tomcat/bin/setenv.sh" ] ; then
-      if [ ! $(grep CATALINA_PID "${PATH_DEST}/crowd/current/apache-tomcat/bin/setenv.sh") ] ; then
+      if [ ! $(grep CATALINA_PID "${PATH_DEST}/crowd/current/apache-tomcat/bin/setenv.sh" &> /dev/null) ] ; then
         cat >> ${PATH_DEST}/crowd/current/apache-tomcat/bin/setenv.sh << 'EOF'
 # set the location of the pid file
 if [ -z "$CATALINA_PID" ] ; then
@@ -779,12 +920,22 @@ function restoreLatestData() {
 #-----------------------------------------------------------------------------------------------------
 # function calls
 #-----------------------------------------------------------------------------------------------------
+echo -e "${HEADER}"
+
 if [ ${JOB_UPDATE} -eq 1 ] ; then
   checkFilesystem
   checkNetwork
   deployLatestJava
-  createCerts
-  echo "UPDATE TEST"
+  for APP in ${APPS}; do
+    stopApp ${APP}
+    deployLatestBin ${APP}
+    deployDriverJDBC ${APP}
+    configTomcatProxy ${APP}
+    setHomes ${APP}
+    setFixes ${APP}
+    startApp ${APP}
+    logger INFO "Succasfully updated \"${APP}\"."
+  done
 fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
@@ -810,8 +961,9 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     setFixes ${APP}
     startApp ${APP}
     createVhost ${APP}
-    echo "INSTALLED ${APP}"
+    logger INFO "Succasfully installed \"${APP}\"."
   done
+  logger INFO "Congratulations, successfully finished \"$(basename $0)\".\n"
 fi 
 
 if [ ${JOB_BACKUP} -eq 1 ] ; then
@@ -839,7 +991,7 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
     purgeFolders ${APP}
     purgeInitScript ${APP}
     purgeVhost ${APP}
-    echo "PURGED ${APP}"
+    logger INFO "Succasfully purged \"${APP}\"."
   done
 fi
 
