@@ -606,12 +606,12 @@ function purgeJava() {
 function stopApp() {
   PID=$(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}')
   if [ ! "x${PID}" == "x" ] ; then
-    logger DEBUG "The \"${1}\" applications pid is \"${PID}\"."
+    logger DEBUG "the ${1} applications pid is ${PID}"
     while ps ef ${PID} &> /dev/null ; do
       kill ${PID} &> /dev/null
       sleep 2
     done
-    logger DEBUG "Successfuly killes application \"${1}\" with pid \"${PID}\"."
+    logger INFO "successfuly stop application ${1} with pid ${PID}"
   fi
 }
 
@@ -621,9 +621,9 @@ function startApp() {
     logger DEBUG "The \"${1}\" applications is not running, so start it."
     SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name startup.sh)
     if su ${1} -l -c "${SCRIPT_START} &> /dev/null" ; then
-      logger DEBUG "Successfuly start application \"${1}\" with \"${SCRIPT_START}\"."
+      logger INFO "successfuly start application ${1} with ${SCRIPT_START}"
     else 
-      logger ERROR "Can't start application \"${1}\" with \"${SCRIPT_START}\"."
+      logger ERROR "can't start application ${1} with ${SCRIPT_START}"
     fi
   fi
 }
@@ -700,7 +700,7 @@ function deployLatestBin() {
     exit 1
   fi
   if [ ! -f ${TEMP}/${FILE_NAME} ] ; then
-    logger "Binary of ${1} does not exists in \"${TEMP}/${FILE_NAME}\", so start download."
+    logger DEBUG "Binary of ${1} does not exists in \"${TEMP}/${FILE_NAME}\", so start download."
     if wget ${BIN_URL} -P ${TEMP} &> /dev/null ; then
       logger DEBUG "Successfully downloaded \"${BIN_URL}\"."
     else
@@ -757,11 +757,23 @@ function configTomcatProxy() {
 
 function setHomes() {
   if [ ${1} == "crowd" ]; then
-    echo "${1}.home=${PATH_DATA}/${1}" > ${PATH_DEST}/${1}/current/${1}-webapp/WEB-INF/classes/${1}-init.properties
+    if echo "${1}.home=${PATH_DATA}/${1}" > ${PATH_DEST}/${1}/current/${1}-webapp/WEB-INF/classes/${1}-init.properties ; then
+      logger DEBUG "Successfully add home path to ${1} config."
+    else
+      logger ERROR "Can't add home path to ${1} config."
+    fi
   elif [ ${1} == "confluence" ]; then
-    echo "${1}.home=${PATH_DATA}/${1}" > ${PATH_DEST}/${1}/current/${1}/WEB-INF/classes/${1}-init.properties
+    if echo "${1}.home=${PATH_DATA}/${1}" > ${PATH_DEST}/${1}/current/${1}/WEB-INF/classes/${1}-init.properties ; then
+      logger DEBUG "Successfully add home path to ${1} config."
+    else
+      logger ERROR "Can't add home path to ${1} config."
+    fi
   elif [ ${1} == "jira" ]; then
-    echo "${1}.home=${PATH_DATA}/${1}" > ${PATH_DEST}/${1}/current/atlassian-${1}/WEB-INF/classes/${1}-application.properties
+    if echo "${1}.home=${PATH_DATA}/${1}" > ${PATH_DEST}/${1}/current/atlassian-${1}/WEB-INF/classes/${1}-application.properties ; then
+      logger DEBUG "Successfully add home path to ${1} config."
+    else
+      logger ERROR "Can't add home path to ${1} config."
+    fi
   fi
 }
 
@@ -811,6 +823,11 @@ cd $PUSHED_DIR
 echo ""
 echo "Server startup logs are located in $LOGBASEABS/logs/catalina.out"
 EOF
+        if [ $? -eq 0 ]; then
+          logger DEBUG "Successfully run fixes on ${1}."
+        else
+          logger ERROR "Can't run fixes on ${1}."
+        fi
       fi
     fi
   fi
@@ -824,34 +841,59 @@ function backupDatabase() {
   if [ ${1} == "jira" ]; then
     APP_CONFIG=$(find ${PATH_DATA}/${1}/ -name dbconfig.xml)
     if [ ! "x${APP_CONFIG}" == "x" ] ; then
+      logger DEBUG "found application config ${APP_CONFIG}"
       MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
+    else
+      logger ERROR "can't find database configuration file for ${1}"
     fi
   elif [ ${1} == "stash" ]; then
     APP_CONFIG=$(find ${PATH_DATA}/${1}/ -name stash-config.properties)
-    if [ ! "x${APP_CONFIG}" == "x" ] ; then
+    if [ ! "x${APP_CONFIG}" == "x" ] ; then  
+      logger DEBUG "found application config ${APP_CONFIG}"
       MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d"=" -f2)
+    else
+      logger ERROR "can't grep database password for ${1}"
     fi
   else
     APP_CONFIG=$(find ${PATH_DATA}/${1}/ -name ${1}.cfg.xml)
     if [ ! "x${APP_CONFIG}" == "x" ] ; then
+      logger DEBUG "found application config ${APP_CONFIG}"
       MYSQL_PASSWORD=$(grep hibernate.connection.password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
+    else
+      logger ERROR "can't grep database credentials from ${1} config"
     fi
   fi
   if [ ! "x${MYSQL_PASSWORD}" == "x" ] ; then
-    mysqldump -u${1} -p${MYSQL_PASSWORD} ${1} > ${PATH_DATA}/${1}/${1}_database_backup.sql
-    chown ${1}:${1} ${PATH_DATA}/${1}/${1}_database_backup.sql
+    if mysqldump -u${1} -p${MYSQL_PASSWORD} ${1} > ${PATH_DATA}/${1}/${1}_database_backup.sql ; then
+      logger INFO "succesfully dumped ${1} to ${PATH_DATA}/${1}/${1}_database_backup.sql"
+    else
+      logger ERROR "cant dump ${1} database backup"
+    fi
+    if chown ${1}:${1} ${PATH_DATA}/${1}/${1}_database_backup.sql &> /dev/null ; then
+      logger DEBUG "succesfully owned database dump from ${1}"
+    else
+      logger ERROR "can't own database dump from ${1}"
+    fi
   else
-    echo "mysql password for ${1} cloud not be found, no database backup!"
+    logger ERROR "can't grep database credentials from ${1} config"
   fi
   unset MYSQL_PASSWORD
 }
 
 function backupHome() {
   if [ -d "${PATH_DEST}/${1}" ] && [ -d ${PATH_BACKUP} ] ; then
-    tar -zcf ${PATH_BACKUP}/${1}_backup_${TIMESTAMP}.tgz ${PATH_DEST}/${1} >/dev/null 2>&1
-    rm -f ${PATH_DATA}/${1}/${1}_database_backup.sql >/dev/null 2>&1
-    for FILE in $(ls ${PATH_BACKUP}/${1}_backup_*.tgz | head -n-${MAXBACKUPS}) ; do 
-      rm -f ${FILE} >/dev/null 2>&1
+    if tar -zcf ${PATH_BACKUP}/${1}_backup_${TIMESTAMP}.tgz ${PATH_DEST}/${1} &> /dev/null ; then
+      logger INFO "succesfully backup ${1} home folder"
+    else
+      logger ERROR "can't backup ${1} home folder"
+    fi
+    if rm -f ${PATH_DATA}/${1}/${1}_database_backup.sql &> /dev/null ; then
+      logger DEBUG "delete old ${1} database dump"
+    fi
+    for FILE in $(ls ${PATH_BACKUP}/${1}_backup_*.tgz | head -n-${MAXBACKUPS}) ; do
+      if rm -f ${FILE} &> /dev/null ; then
+        logger DEBUG "deleted old backup file ${FILE}"
+      fi
     done
   fi
 }
@@ -860,8 +902,9 @@ function deployInitScript() {
   if [ ! -f /etc/init.d/${1} ] ; then
     SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name startup.sh)
     SCRIPT_STOP=$(find ${PATH_DEST}/${1}/current/ -name stop\*.sh)
-    HELPER_VARIABLE='$1'
-    cat >> /etc/init.d/${1} << EOF
+    if [ ! "x${SCRIPT_START}" == "x" ] || [ ! "x${SCRIPT_STOP}" == "x" ] ; then
+      HELPER_VARIABLE='$1'
+      cat >> /etc/init.d/${1} << EOF
 #!/bin/sh -e
 # ${1} startup script
 #chkconfig: 2345 80 05
@@ -895,23 +938,41 @@ esac
  
 exit 0
 EOF
-    chmod +x /etc/init.d/${1} >/dev/null 2>&1
-  fi
-  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    update-rc.d ${1} defaults >/dev/null 2>&1
-  elif [ ${DISTRO} == "redhat" ] ; then
-    chkconfig --add ${1} >/dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        logger DEBUG "successfully created init script for ${1}"
+      else
+        logger ERROR "can't created init script for ${1}"
+      fi
+      if chmod +x /etc/init.d/${1} &> /dev/null ; then
+        logger DEBUG "successfully make init script for ${1} executeble"
+      else
+        logger ERROR "can't make init script for ${1} executeble"
+      fi
+    fi
+    if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
+      if update-rc.d ${1} defaults &> /dev/null ; then
+        logger DEBUG "successfully enabled ${1} for startup"
+      else
+        logger ERROR "can't enabled ${1} for startup"
+      fi
+    elif [ ${DISTRO} == "redhat" ] ; then
+      chkconfig --add ${1} >/dev/null 2>&1
+    fi
   fi
 }
 
 function purgeInitScript() {
   if [ -f /etc/init.d/${1} ] ; then
-    rm -f /etc/init.d/${1}
+    if rm -f /etc/init.d/${1} &> /dev/null ; then
+      logger DEBUG "successfully delete ${1} init script"
+    else
+      logger ERROR "successfully delete ${1} init script"
+    fi
   fi
 }
 
 function restoreLatestData() {
-  NEWESTFILE=`ls | awk -F_ '{print $1 $2}' | sort -n -k 2,2 | tail -1`
+  NEWESTFILE=$(ls | awk -F_ '{print $1 $2}' | sort -n -k 2,2 | tail -1)
   find ${FOLDER_BACKUP} -name ${BACKUP} -mtime ...
   tar -zxvf prog-1-jan-2005.tar.gz -C /home/jerry/prog
   filename="db_daily_"`eval date +%Y%m%d`".tgz"
@@ -941,7 +1002,7 @@ fi
 if [ ${JOB_INSTALL} -eq 1 ] ; then
   checkMemoryusage
   checkFilesystem
-  checkNetwork
+  #checkNetwork
   deployLatestJava
   installTools
   installPostfix
