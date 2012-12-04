@@ -174,8 +174,8 @@ fi
 
 # CHECK AVAILABLE MEMORY FOR EACH APPLICATION
 APP_MEM_FREE="$(echo "($(free -l | grep "Mem:" | awk '{print $4}') / $(echo "${APPS} mysql" | wc -w)) / 1024"  | bc)"
-APP_MEM_PERM="$(echo "${APP_MEM_FREE} / 3" | bc)"
-APP_MEM_HEAP="$(echo "${APP_MEM_PERM} * 2" | bc)"
+APP_MEM_PERM="$(echo "${APP_MEM_FREE} / 5" | bc)"
+APP_MEM_HEAP="$(echo "${APP_MEM_PERM} * 4" | bc)"
 
 #-----------------------------------------------------------------------------------------------------
 # functions
