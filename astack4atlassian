@@ -11,9 +11,9 @@
 #-----------------------------------------------------------------------------------------------------
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
-# /atlassian/atlassian.sh -p && aptitude purge -y mysql-server && rm -rf /var/lib/mysql/
-# * restore procedure
+# alias purge="sudo ./astack4atlassian -p && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
 # * appserver memory calculation
+# * restore procedure
 # * jira proxy path issue
 # refactore with application context /
 # add logrotade script
@@ -49,8 +49,15 @@ HEADER="$(basename $0) - comes with absolutely no warranty!"
 
 USAGE="USAGE: $(basename $0) [OPTIONS]...
 
--d --debug:    gibt eine detaillierte Ausgebe zur verarbeitung des Skripts aus
--h -? --help:  gibt diesen Hilfetext aus.
+-i --install:    
+-u --update:     
+-b --backup:     
+-r --restore:    
+-p --purge:      
+-x --destination: 
+-a --alt-urls:    
+-d --debug:	  gibt eine detaillierte Ausgebe zur verarbeitung des Skripts aus
+-h -? --help:     gibt diesen Hilfetext aus.
 
 Exit status:
  0  if OK,
@@ -114,25 +121,25 @@ fi
 #-----------------------------------------------------------------------------------------------------
 
 # GET WORKING DIRECTORY
-SCRIPT="$0"
-while [ -h "$SCRIPT" ] ; do
-  ls=$(ls -ld "$SCRIPT")
-  link=$(expr "$ls" : '.*-> \(.*\)$')
-  if expr "$link" : '/.*' > /dev/null; then
-    SCRIPT="$link"
+SCRIPT="${0}"
+while [ -h "${SCRIPT}" ] ; do
+  ls=$(ls -ld "${SCRIPT}")
+  link=$(expr "${ls}" : '.*-> \(.*\)$')
+  if expr "${link}" : '/.*' > /dev/null; then
+    SCRIPT="${link}"
   else
-    SCRIPT=$(dirname "$SCRIPT")/"$link"
+    SCRIPT=$(dirname "${SCRIPT}")/"${link}"
   fi
 done
-MD_HOME=$(dirname "$SCRIPT")/..
-export MD_HOME=$(cd $MD_HOME; pwd)
+MD_HOME=$(dirname "${SCRIPT}")/..
+export MD_HOME=$(cd ${MD_HOME}; pwd)
 
 # GET DISTRIBUTION TYPE
 if [ -f /etc/lsb-release ]; then
   . /etc/lsb-release
-  DISTRO=$DISTRIB_ID
+  DISTRO=${DISTRIB_ID}
 elif [ -f /etc/debian_version ]; then
-  DISTRO=debian
+  DISTRO="debian"
 elif [ -f /etc/redhat-release ]; then
   DISTRO="redhat"
 else
@@ -164,6 +171,11 @@ if [ $(pgrep $(basename $0) | wc -l) -gt 2 ]; then
   echo "This script is already running, script will exit now."
   exit
 fi
+
+# CHECK AVAILABLE MEMORY FOR EACH APPLICATION
+APP_MEM_FREE="$(echo "($(free -l | grep "Mem:" | awk '{print $4}') / $(echo "${APPS} mysql" | wc -w)) / 1024"  | bc)"
+APP_MEM_PERM="$(echo "${APP_MEM_FREE} / 3" | bc)"
+APP_MEM_HEAP="$(echo "${APP_MEM_PERM} * 2" | bc)"
 
 #-----------------------------------------------------------------------------------------------------
 # functions
@@ -778,11 +790,31 @@ function setHomes() {
 }
 
 function serverMemorycalc() {
-  #/opt/jira/current/bin/setenv.sh:JVM_MAXIMUM_MEMORY="768m"
-  #/opt/stash/current/bin/setenv.sh:JVM_MAXIMUM_MEMORY="768m"
-  #/opt/crowd/current/apache-tomcat/bin/setenv.sh:JAVA_OPTS="-Xms128m -Xmx512m
-  #/opt/confluence/current/bin/setenv.sh:JAVA_OPTS="-Xms256m -Xmx512m
-  echo mem
+  if [ ${1} == "jira" ]; then
+    if sed "s/JVM_MAXIMUM_MEMORY=.*/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && sed "s/JVM_MINIMUM_MEMORY=.*/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
+      logger DEBUG "Successfully changed momory setting of ${1}."
+    else
+      logger ERROR "Can't change momory setting of ${1}."
+    fi
+  elif [ ${1} == "stash" ]; then
+    if sed "s/JVM_MAXIMUM_MEMORY=.*/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && sed "s/JVM_MINIMUM_MEMORY=.*/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
+      logger DEBUG "Successfully changed momory setting of ${1}."
+    else
+      logger ERROR "Can't change momory setting of ${1}."
+    fi
+  elif [ ${1} == "crowd" ]; then
+    if sed "s/JAVA_OPTS=.*/JAVA_OPTS=\"-Xms${APP_MEM_HEAP}m -Xmx${APP_MEM_HEAP}m -XX:MaxPermSize=${APP_MEM_PERM}m -Dfile.encoding=UTF-8 $JAVA_OPTS\"/g" -i ${PATH_DEST}/${1}/current/apache-tomcat/bin/setenv.sh; then
+      logger DEBUG "Successfully changed momory setting of ${1}."
+    else
+      logger ERROR "Can't change momory setting of ${1}."
+    fi
+  elif [ ${1} == "confluence" ]; then
+    if sed "s/JAVA_OPTS=.*/JAVA_OPTS=\"-Xms${APP_MEM_HEAP}m -Xmx${APP_MEM_HEAP}m -XX:MaxPermSize=${APP_MEM_PERM}m -Dfile.encoding=UTF-8 $JAVA_OPTS\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
+      logger DEBUG "Successfully changed momory setting of ${1}."
+    else
+      logger ERROR "Can't change momory setting of ${1}."
+    fi
+  fi
 }
 
 function setFixes() {
@@ -993,6 +1025,7 @@ if [ ${JOB_UPDATE} -eq 1 ] ; then
     deployDriverJDBC ${APP}
     configTomcatProxy ${APP}
     setHomes ${APP}
+    serverMemorycalc ${APP}
     setFixes ${APP}
     startApp ${APP}
     logger INFO "Succasfully updated \"${APP}\"."
@@ -1019,6 +1052,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     deployDriverJDBC ${APP}
     configTomcatProxy ${APP}
     setHomes ${APP}
+    serverMemorycalc ${APP}
     setFixes ${APP}
     startApp ${APP}
     createVhost ${APP}
