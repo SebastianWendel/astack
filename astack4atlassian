@@ -791,13 +791,15 @@ function setHomes() {
 
 function serverMemorycalc() {
   if [ ${1} == "jira" ]; then
-    if sed "s/JVM_MAXIMUM_MEMORY=.*/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && sed "s/JVM_MINIMUM_MEMORY=.*/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
+    if sed "s/JVM_MAXIMUM_MEMORY=.*/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
+       sed "s/JVM_MINIMUM_MEMORY=.*/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
       logger DEBUG "Successfully changed momory setting of ${1}."
     else
       logger ERROR "Can't change momory setting of ${1}."
     fi
   elif [ ${1} == "stash" ]; then
-    if sed "s/JVM_MAXIMUM_MEMORY=.*/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && sed "s/JVM_MINIMUM_MEMORY=.*/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
+    if sed "s/JVM_MAXIMUM_MEMORY=.*/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
+       sed "s/JVM_MINIMUM_MEMORY=.*/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
       logger DEBUG "Successfully changed momory setting of ${1}."
     else
       logger ERROR "Can't change momory setting of ${1}."
