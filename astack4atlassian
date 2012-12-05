@@ -12,7 +12,6 @@
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
 # alias purge="sudo ./astack4atlassian -p && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
-# * appserver memory calculation
 # * restore procedure
 # * jira proxy path issue
 # refactore with application context /
@@ -220,7 +219,7 @@ function checkMemoryusage() {
 }
 
 function checkNetwork() {
-  if wget -qO- --tries=10 --timeout=5 http://www.evobyte.de/$(basename $0) &> /dev/null ; then
+  if wget -qO- --tries=10 --timeout=5 http://www.sourceindex.de/$(basename $0) &> /dev/null ; then
     logger DEBUG "Successfully checkt network connection."
   else
     logger ERROR "Please check the internet configuration, something went wrong!"
@@ -535,8 +534,8 @@ function createFolders() {
   else 
     logger DEBUG "Folder \"${PATH_DEST}/${1}\" already exists."
   fi
-  if [ ! -d ${PATH_DATA} ] ; then
-    if mkdir -p ${PATH_DATA} &> /dev/null ; then
+  if [ ! -d ${PATH_DEST}/${1}/data ] ; then
+    if mkdir -p ${PATH_DEST}/${1}/data &> /dev/null ; then
       logger DEBUG "Succesfully created folder \"${PATH_DATA}\"."
     else
       logger ERROR "Can't create folder \"${PATH_DATA}\"."
@@ -544,8 +543,8 @@ function createFolders() {
   else 
     logger DEBUG "Folder \"${PATH_DATA}\" already exists."
   fi
-  if [ ! -d ${PATH_BACKUP} ] ; then
-    if mkdir -p ${PATH_BACKUP} &> /dev/null ; then
+  if [ ! -d ${PATH_DEST}/${1}/backup ] ; then
+    if mkdir -p ${PATH_DEST}/${1}/backup &> /dev/null ; then
       logger DEBUG "Succesfully created folder \"${PATH_BACKUP}\"."
     else
       logger ERROR "Can't create folder \"${PATH_BACKUP}\"."
