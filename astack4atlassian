@@ -33,8 +33,6 @@
 #-----------------------------------------------------------------------------------------------------
 APPS="crowd confluence jira stash"
 PATH_DEST="/opt"
-PATH_DATA="${PATH_DEST}/data"
-PATH_BACKUP="${PATH_DEST}/backup"
 TEMP="/tmp"
 LOG_FILE="astack.log"
 LOG_LEVEL='INFO'
@@ -175,6 +173,9 @@ fi
 APP_MEM_FREE="$(echo "($(free -l | grep "Mem:" | awk '{print $4}') / $(echo "${APPS} mysql" | wc -w)) / 1024"  | bc)"
 APP_MEM_PERM="$(echo "${APP_MEM_FREE} / 5" | bc)"
 APP_MEM_HEAP="$(echo "${APP_MEM_PERM} * 4" | bc)"
+if [ "${APP_MEM_PERM}" -lt "256" ]; then 
+  APP_MEM_PERM="256"
+fi
 
 #-----------------------------------------------------------------------------------------------------
 # functions
@@ -183,15 +184,15 @@ function logger() {
   TIME_STAMP=$(date +'%Y-%m-%d %T')
   if [ ${1} == "INFO" ] || [ ${1} == "ERROR" ]; then
     if [ ${1} == "INFO" ]; then
-      echo -e "[${TIME_STAMP}] [${1}]  ${2}"
+      echo -e "${TIME_STAMP} [${1}]  ${2}"
     else
-      echo -e "[${TIME_STAMP}] [${1}] ${2}"
+      echo -e "${TIME_STAMP} [${1}] ${2}"
     fi
   elif [ ${LOG_LEVEL} == "DEBUG" ]; then
     if [ ${1} == "WARN" ]; then
-      echo -e "[${TIME_STAMP}] [${1}]  ${2}"
+      echo -e "${TIME_STAMP} [${1}]  ${2}"
     else    
-      echo -e "[${TIME_STAMP}] [${1}] ${2}"
+      echo -e "${TIME_STAMP} [${1}] ${2}"
     fi
   fi
 }
@@ -534,17 +535,17 @@ function createFolders() {
   else 
     logger DEBUG "Folder \"${PATH_DEST}/${1}\" already exists."
   fi
-  if [ ! -d ${PATH_DEST}/${1}/data ] ; then
-    if mkdir -p ${PATH_DEST}/${1}/data &> /dev/null ; then
-      logger DEBUG "Succesfully created folder \"${PATH_DATA}\"."
-    else
-      logger ERROR "Can't create folder \"${PATH_DATA}\"."
-    fi
-  else 
-    logger DEBUG "Folder \"${PATH_DATA}\" already exists."
-  fi
-  if [ ! -d ${PATH_DEST}/${1}/backup ] ; then
-    if mkdir -p ${PATH_DEST}/${1}/backup &> /dev/null ; then
+#  if [ ! -d ${PATH_DATA} ] ; then
+#    if mkdir -p ${PATH_DATA} &> /dev/null ; then
+#      logger DEBUG "Succesfully created folder \"${PATH_DATA}\"."
+#    else
+#      logger ERROR "Can't create folder \"${PATH_DATA}\"."
+#    fi
+#  else 
+#    logger DEBUG "Folder \"${PATH_DATA}\" already exists."
+#  fi
+  if [ ! -d ${PATH_BACKUP} ] ; then
+    if mkdir -p ${PATH_BACKUP} &> /dev/null ; then
       logger DEBUG "Succesfully created folder \"${PATH_BACKUP}\"."
     else
       logger ERROR "Can't create folder \"${PATH_BACKUP}\"."
@@ -575,7 +576,7 @@ function createCredentials() {
     else
       logger ERROR "Can't created group \"${1}\"."
     fi 
-    if useradd -s /bin/bash -r -m -g ${1} -d ${PATH_DATA}/${1} ${1} &> /dev/null ; then
+    if useradd -s /bin/bash -r -m -g ${1} -d ${PATH_DATA} ${1} &> /dev/null ; then
       logger DEBUG "Successfuly created user \"${1}\"."
     else
       logger ERROR "Can't created user \"${1}\"."
@@ -584,12 +585,12 @@ function createCredentials() {
 }
 
 function setEnvirement() {
-  if [ -f "${PATH_DATA}/${1}/.profile" ] ; then
-    if ! grep JAVA_HOME "${PATH_DATA}/${1}/.profile" >/dev/null 2>&1 ; then
-      echo "export JAVA_HOME=${PATH_DEST}/java/current" >> "${PATH_DATA}/${1}/.profile"
-      echo "export PATH=$PATH:${PATH_DEST}/java/current/bin" >> "${PATH_DATA}/${1}/.profile"
+  if [ -f "${PATH_DATA}/.profile" ] ; then
+    if ! grep JAVA_HOME "${PATH_DATA}/.profile" >/dev/null 2>&1 ; then
+      echo "export JAVA_HOME=${PATH_DEST}/java/current" >> "${PATH_DATA}/.profile"
+      echo "export PATH=$PATH:${PATH_DEST}/java/current/bin" >> "${PATH_DATA}/.profile"
       if [ ${1} == "stash" ] ; then
-        echo "export STASH_HOME=${PATH_DATA}/${1}" >> "${PATH_DATA}/${1}/.profile"
+        echo "export STASH_HOME=${PATH_DATA}/${1}" >> "${PATH_DATA}/.profile"
       fi
       logger DEBUG "Succesfully added Java envirements to \".profile\"."
     fi
@@ -768,19 +769,19 @@ function configTomcatProxy() {
 
 function setHomes() {
   if [ ${1} == "crowd" ]; then
-    if echo "${1}.home=${PATH_DATA}/${1}" > ${PATH_DEST}/${1}/current/${1}-webapp/WEB-INF/classes/${1}-init.properties ; then
+    if echo "${1}.home=${PATH_DATA}" > ${PATH_DEST}/${1}/current/${1}-webapp/WEB-INF/classes/${1}-init.properties ; then
       logger DEBUG "Successfully add home path to ${1} config."
     else
       logger ERROR "Can't add home path to ${1} config."
     fi
   elif [ ${1} == "confluence" ]; then
-    if echo "${1}.home=${PATH_DATA}/${1}" > ${PATH_DEST}/${1}/current/${1}/WEB-INF/classes/${1}-init.properties ; then
+    if echo "${1}.home=${PATH_DATA}" > ${PATH_DEST}/${1}/current/${1}/WEB-INF/classes/${1}-init.properties ; then
       logger DEBUG "Successfully add home path to ${1} config."
     else
       logger ERROR "Can't add home path to ${1} config."
     fi
   elif [ ${1} == "jira" ]; then
-    if echo "${1}.home=${PATH_DATA}/${1}" > ${PATH_DEST}/${1}/current/atlassian-${1}/WEB-INF/classes/${1}-application.properties ; then
+    if echo "${1}.home=${PATH_DATA}" > ${PATH_DEST}/${1}/current/atlassian-${1}/WEB-INF/classes/${1}-application.properties ; then
       logger DEBUG "Successfully add home path to ${1} config."
     else
       logger ERROR "Can't add home path to ${1} config."
@@ -790,27 +791,33 @@ function setHomes() {
 
 function serverMemorycalc() {
   if [ ${1} == "jira" ]; then
-    if sed "s/JVM_MAXIMUM_MEMORY=.*/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
-       sed "s/JVM_MINIMUM_MEMORY=.*/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
+    if sed "s/JVM_MAXIMUM_MEMORY=\"[0-9]*m\"/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
+       sed "s/JVM_MINIMUM_MEMORY=\"[0-9]*m\"/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
+       sed "s/JIRA_MAX_PERM_SIZE=[0-9]*m/JIRA_MAX_PERM_SIZE=\"${APP_MEM_PERM}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
       logger DEBUG "Successfully changed momory setting of ${1}."
     else
       logger ERROR "Can't change momory setting of ${1}."
     fi
   elif [ ${1} == "stash" ]; then
-    if sed "s/JVM_MAXIMUM_MEMORY=.*/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
-       sed "s/JVM_MINIMUM_MEMORY=.*/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
+    if sed "s/JVM_MAXIMUM_MEMORY=\"[0-9]*m\"/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
+       sed "s/JVM_MINIMUM_MEMORY=\"[0-9]*m\"/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
+       sed "s/STASH_MAX_PERM_SIZE=[0-9]*m/STASH_MAX_PERM_SIZE=\"${APP_MEM_PERM}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
       logger DEBUG "Successfully changed momory setting of ${1}."
     else
       logger ERROR "Can't change momory setting of ${1}."
     fi
   elif [ ${1} == "crowd" ]; then
-    if sed "s/JAVA_OPTS=.*/JAVA_OPTS=\"-Xms${APP_MEM_HEAP}m -Xmx${APP_MEM_HEAP}m -XX:MaxPermSize=${APP_MEM_PERM}m -Dfile.encoding=UTF-8 $JAVA_OPTS\"/g" -i ${PATH_DEST}/${1}/current/apache-tomcat/bin/setenv.sh; then
+    if sed "s/Xms[0-9]*m/Xms${APP_MEM_HEAP}m/g" -i ${PATH_DEST}/${1}/current/apache-tomcat/bin/setenv.sh && \
+       sed "s/Xmx[0-9]*m/Xmx${APP_MEM_HEAP}m/g" -i ${PATH_DEST}/${1}/current/apache-tomcat/bin/setenv.sh && \
+       sed "s/MaxPermSize=[0-9]*m/MaxPermSize=${APP_MEM_PERM}m/g" -i ${PATH_DEST}/${1}/current/apache-tomcat/bin/setenv.sh ; then
       logger DEBUG "Successfully changed momory setting of ${1}."
     else
       logger ERROR "Can't change momory setting of ${1}."
     fi
   elif [ ${1} == "confluence" ]; then
-    if sed "s/JAVA_OPTS=.*/JAVA_OPTS=\"-Xms${APP_MEM_HEAP}m -Xmx${APP_MEM_HEAP}m -XX:MaxPermSize=${APP_MEM_PERM}m -Dfile.encoding=UTF-8 $JAVA_OPTS\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
+    if sed "s/Xms[0-9]*m/Xms${APP_MEM_HEAP}m/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
+       sed "s/Xmx[0-9]*m/Xmx${APP_MEM_HEAP}m/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
+       sed "s/MaxPermSize=[0-9]*m/MaxPermSize=${APP_MEM_PERM}m/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
       logger DEBUG "Successfully changed momory setting of ${1}."
     else
       logger ERROR "Can't change momory setting of ${1}."
@@ -872,7 +879,7 @@ function createLogrotate() {
 
 function backupDatabase() { 
   if [ ${1} == "jira" ]; then
-    APP_CONFIG=$(find ${PATH_DATA}/${1}/ -name dbconfig.xml)
+    APP_CONFIG=$(find ${PATH_DATA}/ -name dbconfig.xml)
     if [ ! "x${APP_CONFIG}" == "x" ] ; then
       logger DEBUG "found application config ${APP_CONFIG}"
       MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
@@ -880,7 +887,7 @@ function backupDatabase() {
       logger ERROR "can't find database configuration file for ${1}"
     fi
   elif [ ${1} == "stash" ]; then
-    APP_CONFIG=$(find ${PATH_DATA}/${1}/ -name stash-config.properties)
+    APP_CONFIG=$(find ${PATH_DATA}/ -name stash-config.properties)
     if [ ! "x${APP_CONFIG}" == "x" ] ; then  
       logger DEBUG "found application config ${APP_CONFIG}"
       MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d"=" -f2)
@@ -888,7 +895,7 @@ function backupDatabase() {
       logger ERROR "can't grep database password for ${1}"
     fi
   else
-    APP_CONFIG=$(find ${PATH_DATA}/${1}/ -name ${1}.cfg.xml)
+    APP_CONFIG=$(find ${PATH_DATA}/ -name ${1}.cfg.xml)
     if [ ! "x${APP_CONFIG}" == "x" ] ; then
       logger DEBUG "found application config ${APP_CONFIG}"
       MYSQL_PASSWORD=$(grep hibernate.connection.password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
@@ -897,12 +904,12 @@ function backupDatabase() {
     fi
   fi
   if [ ! "x${MYSQL_PASSWORD}" == "x" ] ; then
-    if mysqldump -u${1} -p${MYSQL_PASSWORD} ${1} > ${PATH_DATA}/${1}/${1}_database_backup.sql ; then
-      logger INFO "succesfully dumped ${1} to ${PATH_DATA}/${1}/${1}_database_backup.sql"
+    if mysqldump -u${1} -p${MYSQL_PASSWORD} ${1} > ${PATH_DATA}/${1}_database_backup.sql ; then
+      logger INFO "succesfully dumped ${1} to ${PATH_DATA}/${1}_database_backup.sql"
     else
       logger ERROR "cant dump ${1} database backup"
     fi
-    if chown ${1}:${1} ${PATH_DATA}/${1}/${1}_database_backup.sql &> /dev/null ; then
+    if chown ${1}:${1} ${PATH_DATA}/${1}_database_backup.sql &> /dev/null ; then
       logger DEBUG "succesfully owned database dump from ${1}"
     else
       logger ERROR "can't own database dump from ${1}"
@@ -920,7 +927,7 @@ function backupHome() {
     else
       logger ERROR "can't backup ${1} home folder"
     fi
-    if rm -f ${PATH_DATA}/${1}/${1}_database_backup.sql &> /dev/null ; then
+    if rm -f ${PATH_DATA}}/${1}_database_backup.sql &> /dev/null ; then
       logger DEBUG "delete old ${1} database dump"
     fi
     for FILE in $(ls ${PATH_BACKUP}/${1}_backup_*.tgz | head -n-${MAXBACKUPS}) ; do
@@ -1021,6 +1028,8 @@ if [ ${JOB_UPDATE} -eq 1 ] ; then
   checkNetwork
   deployLatestJava
   for APP in ${APPS}; do
+    PATH_DATA="${PATH_DEST}/${APP}/data"
+    PATH_BACKUP="${PATH_DEST}/${APP}/backup"
     stopApp ${APP}
     deployLatestBin ${APP}
     deployDriverJDBC ${APP}
@@ -1044,6 +1053,8 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
   createCerts
   installMySQL
   for APP in ${APPS}; do
+    PATH_DATA="${PATH_DEST}/${APP}/data"
+    PATH_BACKUP="${PATH_DEST}/${APP}/backup"
     createDatabase ${APP}
     createFolders ${APP}
     createCredentials ${APP}
@@ -1065,6 +1076,8 @@ fi
 if [ ${JOB_BACKUP} -eq 1 ] ; then
   checkFilesystem
   for APP in ${APPS}; do
+    PATH_DATA="${PATH_DEST}/${APP}/data"
+    PATH_BACKUP="${PATH_DEST}/${APP}/backup"
     stopApp ${APP}
     backupDatabase ${APP}
     backupHome ${APP}
@@ -1075,6 +1088,8 @@ fi
 if [ ${JOB_RESTORE} -eq 1 ] ; then
   checkFilesystem
   for APP in ${APPS}; do
+    PATH_DATA="${PATH_DEST}/${APP}/data"
+    PATH_BACKUP="${PATH_DEST}/${APP}/backup"
     backupData ${APP}
   done
 fi
