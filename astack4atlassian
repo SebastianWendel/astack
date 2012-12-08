@@ -475,8 +475,11 @@ function createVhost() {
     Allow from all
   </Proxy>
         
-  ProxyPass         /${1} http://0.0.0.0:${TOMCAT_PORT}/${1}
-  ProxyPassReverse  /${1} http://0.0.0.0:${TOMCAT_PORT}/${1}
+  #ProxyPass         /${1} http://0.0.0.0:${TOMCAT_PORT}/${1}
+  #ProxyPassReverse  /${1} http://0.0.0.0:${TOMCAT_PORT}/${1}
+
+  ProxyPass         / http://0.0.0.0:${TOMCAT_PORT}/
+  ProxyPassReverse  / http://0.0.0.0:${TOMCAT_PORT}/
 
   <Location /${1}>
     Order allow,deny
@@ -758,7 +761,8 @@ function configTomcatProxy() {
   if [ -f ${TOMCAT_CONFIG} ] ; then 
     if ! grep ${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
       logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" seems not to be configured."
-      xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "/${1}" ${TOMCAT_CONFIG} &> /dev/null
+      #xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "/${1}" ${TOMCAT_CONFIG} &> /dev/null
+      xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "/" ${TOMCAT_CONFIG} &> /dev/null
       xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${1}.${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null
       xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyPort -v 80 ${TOMCAT_CONFIG} &> /dev/null
     else
@@ -1021,7 +1025,7 @@ function restoreLatestData() {
 #-----------------------------------------------------------------------------------------------------
 # function calls
 #-----------------------------------------------------------------------------------------------------
-echo -e "${HEADER}"
+#echo -e "${HEADER}"
 
 if [ ${JOB_UPDATE} -eq 1 ] ; then
   checkFilesystem
