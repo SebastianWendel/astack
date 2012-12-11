@@ -12,6 +12,8 @@
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
 # alias purge="sudo ./astack4atlassian -p && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
+# * proxy config logger
+# * Jira Mismatched URL Scheme server.xml scheme="https" proxyPort="443"
 # * restore procedure
 # * jira proxy path issue
 # refactore with application context /
@@ -25,6 +27,7 @@
 # check 32bit distributions
 # check redhat distributions
 # check debian distributions
+# backup warning if not mysql
 # test single and multi application install
 # check if mysql jdbc driver already exits and then do nothing
 
@@ -465,7 +468,7 @@ function createVhost() {
   RewriteEngine     On
   RewriteLogLevel   0
   RewriteLog        ${APACHE_LOG_DIR}/${1}_rewrite.log
-  RewriteRule       ^/?$ https://%{HTTP_HOST}/${1}/ [R,L]
+  #RewriteRule       ^/?$ https://%{HTTP_HOST}/${1}/ [R,L]
 
   ProxyRequests     Off
   ProxyPreserveHost On
