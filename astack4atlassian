@@ -19,6 +19,7 @@
 # * restore procedure
 # * jira proxy path issue
 # refactore with application context /
+# add installation of https://bobswift.atlassian.net/wiki/display/ACLI/Atlassian+CLI+license
 # add logrotade script
 # full usage output
 # add support for bamboo
