@@ -12,13 +12,7 @@
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
 # alias purge="sudo ./astack4atlassian -p && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
-# * proxy config logger
-# * Jira Mismatched URL Scheme server.xml scheme="https" proxyPort="443"
-# * jira application url (admin url)
-# * stash application url (admin url)
 # * restore procedure
-# * jira proxy path issue
-# refactore with application context /
 # add installation of https://bobswift.atlassian.net/wiki/display/ACLI/Atlassian+CLI+license
 # add logrotade script
 # full usage output
