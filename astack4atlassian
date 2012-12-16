@@ -481,9 +481,6 @@ function createVhost() {
     Allow from all
   </Proxy>
         
-  #ProxyPass         /${1} http://0.0.0.0:${TOMCAT_PORT}/${1}
-  #ProxyPassReverse  /${1} http://0.0.0.0:${TOMCAT_PORT}/${1}
-
   ProxyPass         / http://0.0.0.0:${TOMCAT_PORT}/
   ProxyPassReverse  / http://0.0.0.0:${TOMCAT_PORT}/
 
@@ -767,10 +764,26 @@ function configTomcatProxy() {
   if [ -f ${TOMCAT_CONFIG} ] ; then 
     if ! grep ${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
       logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" seems not to be configured."
-      #xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "/${1}" ${TOMCAT_CONFIG} &> /dev/null
-      xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "/" ${TOMCAT_CONFIG} &> /dev/null
-      xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${1}.${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null
-      xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyPort -v 80 ${TOMCAT_CONFIG} &> /dev/null
+      if xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "/" ${TOMCAT_CONFIG} &> /dev/null ; then
+	logger DEBUG "Successfully set application context path for ${1}."
+      else
+        logger ERROR "Can't set set application context path for ${1}."
+      fi
+      if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${1}.${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
+        logger DEBUG "Successfully set application proxy name for ${1}."
+      else
+        logger ERROR "Can't set set application proxy name for ${1}."
+      fi
+      if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyPort -v 443 ${TOMCAT_CONFIG} &> /dev/null ; then
+        logger DEBUG "Successfully set application proxy port path for ${1}."
+      else
+        logger ERROR "Can't set set application proxy port for ${1}."
+      fi
+      if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n scheme -v https ${TOMCAT_CONFIG} &> /dev/null ; then
+        logger DEBUG "Successfully set application proxy scheme for ${1}."
+      else
+        logger ERROR "Can't set set application proxy scheme for ${1}."
+      fi
     else
       logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" is already configured."
     fi
