@@ -921,7 +921,7 @@ function backupDatabase() {
     fi
   fi
   if [ ! "x${MYSQL_PASSWORD}" == "x" ] ; then
-    if mysqldump -u${1} -p${MYSQL_PASSWORD} ${1} > ${PATH_DATA}/${1}_database_backup.sql ; then
+    if mysqldump -u${1} -p${MYSQL_PASSWORD} ${1} --all-databases > ${PATH_DATA}/${1}_database_backup.sql ; then
       logger INFO "succesfully dumped ${1} to ${PATH_DATA}/${1}_database_backup.sql"
     else
       logger ERROR "cant dump ${1} database backup"
@@ -939,7 +939,7 @@ function backupDatabase() {
 
 function backupHome() {
   if [ -d "${PATH_DEST}/${1}" ] && [ -d ${PATH_BACKUP} ] ; then
-    if tar -zcf ${PATH_BACKUP}/${1}_backup_${TIMESTAMP}.tgz ${PATH_DEST}/${1} &> /dev/null ; then
+    if tar -czf ${PATH_BACKUP}/${1}_backup_${TIMESTAMP}.tgz --exclude="${PATH_BACKUP}" ${PATH_DEST}/${1} &> /dev/null ; then
       logger INFO "succesfully backup ${1} home folder"
     else
       logger ERROR "can't backup ${1} home folder"
@@ -1029,10 +1029,68 @@ function purgeInitScript() {
 }
 
 function restoreLatestData() {
-  NEWESTFILE=$(ls | awk -F_ '{print $1 $2}' | sort -n -k 2,2 | tail -1)
-  find ${FOLDER_BACKUP} -name ${BACKUP} -mtime ...
-  tar -zxvf prog-1-jan-2005.tar.gz -C /home/jerry/prog
-  filename="db_daily_"`eval date +%Y%m%d`".tgz"
+  BACKUPLATEST=$(ls ${PATH_BACKUP}/*.tgz | sort -rn | head -n1)
+  if tar -tzf ${BACKUPLATEST} &> /dev/null ; then
+    logger DEBUG "Last backup ${BACKUPLATEST} is validated to restore."
+    if cp ${BACKUPLATEST} ${PATH_DEST} &> /dev/null ; then
+      logger DEBUG "Successfully copy latest backup ${BACKUPLATEST} to ${PATH_DEST}."
+      if find ${PATH_DEST}/${1}/* -maxdepth 0 | grep -v ${PATH_BACKUP} | xargs rm -rf &> /dev/null ; then
+        logger DEBUG "Successfully removed ${1} files for the restore."
+        if tar -xzf ${BACKUPLATEST} -C / &> /dev/null ; then
+          logger INFO "Successfully restored ${1} last backup files."
+        else
+          logger ERROR "Can't restored ${1} last backup files."
+        fi
+      else
+        logger ERROR "Can't removed ${1} files for the restore."
+	exit 1
+      fi
+    else
+      logger ERROR "Can't move ${BACKUPLATEST} to ${PATH_DEST}, script will exit now."
+      exit 1
+    fi
+  else
+    logger ERROR "Last backup ${BACKUPLATEST} is not validated, script will exit now."
+    exit 1
+  fi
+}
+
+function restoreDatabase() {
+  if [ ${1} == "jira" ]; then
+    APP_CONFIG=$(find ${PATH_DATA}/ -name dbconfig.xml)
+    if [ ! "x${APP_CONFIG}" == "x" ] ; then
+      logger DEBUG "found application config ${APP_CONFIG}"
+      MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
+    else
+      logger ERROR "can't find database configuration file for ${1}"
+    fi
+  elif [ ${1} == "stash" ]; then
+    APP_CONFIG=$(find ${PATH_DATA}/ -name stash-config.properties)
+    if [ ! "x${APP_CONFIG}" == "x" ] ; then
+      logger DEBUG "found application config ${APP_CONFIG}"
+      MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d"=" -f2)
+    else
+      logger ERROR "can't grep database password for ${1}"
+    fi
+  else
+    APP_CONFIG=$(find ${PATH_DATA}/ -name ${1}.cfg.xml)
+    if [ ! "x${APP_CONFIG}" == "x" ] ; then
+      logger DEBUG "found application config ${APP_CONFIG}"
+      MYSQL_PASSWORD=$(grep hibernate.connection.password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
+    else
+      logger ERROR "can't grep database credentials from ${1} config"
+    fi
+  fi
+  if [ ! "x${MYSQL_PASSWORD}" == "x" ] ; then
+    if mysqlimport -u${1} -p${MYSQL_PASSWORD} ${1} ${PATH_DATA}/${1}_database_backup.sql ; then
+      logger INFO "Succesfully restore ${1} dump ${PATH_DATA}/${1}_database_backup.sql"
+    else
+      logger ERROR "Can't restore ${1} dump ${PATH_DATA}/${1}_database_backup.sql"
+    fi
+  else
+    logger ERROR "can't grep database credentials from ${1} config"
+  fi
+  unset MYSQL_PASSWORD
 }
 
 #-----------------------------------------------------------------------------------------------------
@@ -1107,7 +1165,10 @@ if [ ${JOB_RESTORE} -eq 1 ] ; then
   for APP in ${APPS}; do
     PATH_DATA="${PATH_DEST}/${APP}/data"
     PATH_BACKUP="${PATH_DEST}/${APP}/backup"
-    backupData ${APP}
+    stopApp ${APP}
+    restoreLatestData ${APP}
+    restoreDatabase ${APP}
+    startApp ${APP}
   done
 fi
 
