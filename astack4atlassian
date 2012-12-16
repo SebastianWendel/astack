@@ -921,7 +921,7 @@ function backupDatabase() {
     fi
   fi
   if [ ! "x${MYSQL_PASSWORD}" == "x" ] ; then
-    if mysqldump -u${1} -p${MYSQL_PASSWORD} ${1} --all-databases > ${PATH_DATA}/${1}_database_backup.sql ; then
+    if mysqldump -u${1} -p${MYSQL_PASSWORD} ${1} --add-drop-database > ${PATH_DATA}/${1}_database_backup.sql ; then
       logger INFO "succesfully dumped ${1} to ${PATH_DATA}/${1}_database_backup.sql"
     else
       logger ERROR "cant dump ${1} database backup"
@@ -1032,21 +1032,15 @@ function restoreLatestData() {
   BACKUPLATEST=$(ls ${PATH_BACKUP}/*.tgz | sort -rn | head -n1)
   if tar -tzf ${BACKUPLATEST} &> /dev/null ; then
     logger DEBUG "Last backup ${BACKUPLATEST} is validated to restore."
-    if cp ${BACKUPLATEST} ${PATH_DEST} &> /dev/null ; then
-      logger DEBUG "Successfully copy latest backup ${BACKUPLATEST} to ${PATH_DEST}."
-      if find ${PATH_DEST}/${1}/* -maxdepth 0 | grep -v ${PATH_BACKUP} | xargs rm -rf &> /dev/null ; then
-        logger DEBUG "Successfully removed ${1} files for the restore."
-        if tar -xzf ${BACKUPLATEST} -C / &> /dev/null ; then
-          logger INFO "Successfully restored ${1} last backup files."
-        else
-          logger ERROR "Can't restored ${1} last backup files."
-        fi
+    if find ${PATH_DEST}/${1}/* -maxdepth 0 | grep -v ${PATH_BACKUP} | xargs rm -rf &> /dev/null ; then
+      logger DEBUG "Successfully removed ${1} files for the restore."
+      if tar -xzf ${BACKUPLATEST} -C / &> /dev/null ; then
+        logger INFO "Successfully restored ${1} last backup files."
       else
-        logger ERROR "Can't removed ${1} files for the restore."
-	exit 1
+        logger ERROR "Can't restored ${1} last backup files."
       fi
     else
-      logger ERROR "Can't move ${BACKUPLATEST} to ${PATH_DEST}, script will exit now."
+      logger ERROR "Can't removed ${1} files for the restore."
       exit 1
     fi
   else
@@ -1082,7 +1076,7 @@ function restoreDatabase() {
     fi
   fi
   if [ ! "x${MYSQL_PASSWORD}" == "x" ] ; then
-    if mysqlimport -u${1} -p${MYSQL_PASSWORD} ${1} ${PATH_DATA}/${1}_database_backup.sql ; then
+    if mysql -u${1} -p${MYSQL_PASSWORD} ${1} < ${PATH_DATA}/${1}_database_backup.sql ; then
       logger INFO "Succesfully restore ${1} dump ${PATH_DATA}/${1}_database_backup.sql"
     else
       logger ERROR "Can't restore ${1} dump ${PATH_DATA}/${1}_database_backup.sql"
