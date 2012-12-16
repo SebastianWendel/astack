@@ -12,22 +12,22 @@
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
 # alias purge="sudo ./astack4atlassian -p && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
-# * restore procedure
-# add logrotade script
+# add external apache procedure
+# add alternative subdomains
+# add applicatian parameters
+# check if exists add partitial install
+# domain parameters
 # full usage output
 # add support for bamboo
 # add support for fisheye
 # add support for crucible
-# check if exists add partitial install
 # domain parameters
 # check 32bit distributions
 # check redhat distributions
 # check debian distributions
-# backup warning if not mysql
 # test single and multi application install
 # check if mysql jdbc driver already exits and then do nothing
 # add installation of https://bobswift.atlassian.net/wiki/display/ACLI/Atlassian+CLI+license
-# apache vhost proxy connectiontimeout=5 timeout=30
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
