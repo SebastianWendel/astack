@@ -13,7 +13,6 @@
 #-----------------------------------------------------------------------------------------------------
 # alias purge="sudo ./astack4atlassian -p && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
 # * restore procedure
-# add installation of https://bobswift.atlassian.net/wiki/display/ACLI/Atlassian+CLI+license
 # add logrotade script
 # full usage output
 # add support for bamboo
@@ -27,6 +26,8 @@
 # backup warning if not mysql
 # test single and multi application install
 # check if mysql jdbc driver already exits and then do nothing
+# add installation of https://bobswift.atlassian.net/wiki/display/ACLI/Atlassian+CLI+license
+# apache vhost proxy connectiontimeout=5 timeout=30
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
@@ -444,7 +445,7 @@ function createVhost() {
  
   RewriteEngine     On
   RewriteCond       %{HTTPS} off
-  RewriteRule       (.*) https://%{HTTP_HOST}%{REQUEST_URI}
+  RewriteRule       ^/?(.*) https://%{HTTP_HOST}%{REQUEST_URI}
 </VirtualHost>
  
 <VirtualHost *:443>
@@ -465,7 +466,6 @@ function createVhost() {
   RewriteEngine     On
   RewriteLogLevel   0
   RewriteLog        ${APACHE_LOG_DIR}/${1}_rewrite.log
-  #RewriteRule       ^/?$ https://%{HTTP_HOST}/${1}/ [R,L]
 
   ProxyRequests     Off
   ProxyPreserveHost On
@@ -758,7 +758,7 @@ function configTomcatProxy() {
   if [ -f ${TOMCAT_CONFIG} ] ; then 
     if ! grep ${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
       logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" seems not to be configured."
-      if xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "/" ${TOMCAT_CONFIG} &> /dev/null ; then
+      if xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "" ${TOMCAT_CONFIG} &> /dev/null ; then
 	logger DEBUG "Successfully set application context path for ${1}."
       else
         logger ERROR "Can't set set application context path for ${1}."
