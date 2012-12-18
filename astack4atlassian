@@ -13,6 +13,7 @@
 #-----------------------------------------------------------------------------------------------------
 # alias purge="sudo ./astack4atlassian -p && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
 # add external apache procedure
+# tomcat address="127.0.0.1" if external apache
 # add alternative subdomains
 # add applicatian parameters
 # check if exists add partitial install
