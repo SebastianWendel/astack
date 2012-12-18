@@ -2,9 +2,9 @@
 #-----------------------------------------------------------------------------------------------------
 # File:         astack4atlassian
 # Description:  install, update and backup atlassian products
-# Plattform:    Red-Hat, CentOS, Debian, Ubuntu
+# Plattform:    Debian, Ubuntu
 # Created:      01.09.2012
-# Author:       Sebastian Wendel, evobyte IT-Services, Hamburg/Germany
+# Author:       Sebastian Wendel, SourceIndex IT-Services, Hamburg/Germany
 # License:      Apache License, Version 2.0
 #-----------------------------------------------------------------------------------------------------
 
