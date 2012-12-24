@@ -13,17 +13,12 @@
 #-----------------------------------------------------------------------------------------------------
 # alias purge="sudo ./astack4atlassian -p && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
 # add external apache procedure
-# tomcat connectionTimeout="60000"
-# tomcat address="127.0.0.1" if external apache
-# add alternative subdomains
 # add applicatian parameters
 # check if exists add partitial install
-# domain parameters
 # full usage output
 # add support for bamboo
 # add support for fisheye
 # add support for crucible
-# domain parameters
 # check 32bit distributions
 # check redhat distributions
 # check debian distributions
@@ -34,10 +29,10 @@
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
 #-----------------------------------------------------------------------------------------------------
-APPS="crowd confluence jira stash"
-PATH_DEST="/opt"
-TEMP="/tmp"
-LOG_FILE="astack.log"
+APPS='crowd confluence jira stash'
+PATH_DEST='/opt'
+TEMP='/tmp'
+LOG_FILE="${PATH_DEST}/astack.log"
 LOG_LEVEL='INFO'
 DOMAIN='example.org'
 MAXBACKUPS=14
@@ -49,15 +44,19 @@ HEADER="$(basename $0) - comes with absolutely no warranty!"
 
 USAGE="USAGE: $(basename $0) [OPTIONS]...
 
--i --install:    
--u --update:     
--b --backup:     
--r --restore:    
--p --purge:      
--x --destination: 
--a --alt-subs:    
--d --debug:	  gibt eine detaillierte Ausgebe zur verarbeitung des Skripts aus
--h -? --help:     gibt diesen Hilfetext aus.
+-i --install:     
+-u --update:      
+-b --backup:      
+-r --restore:     
+-p --purge:       
+-a --application:
+--destination:    
+--domain:         
+--alt-names:      
+--ext-proxy:     
+--debug:	     gibt eine detaillierte Ausgebe zur verarbeitung des Skripts aus
+--verbose:	      
+-h -? --help:    gibt diesen Hilfetext aus.
 
 Exit status:
  0  if OK,
@@ -88,6 +87,7 @@ VERSION_UPDATE=0
 PKG_DEBIAN="git xmlstarlet"
 PKG_REDHAT=""
 ALT_NAMES=0
+EXT_PROXY=0
 
 #-----------------------------------------------------------------------------------------------------
 # control structure
@@ -95,22 +95,26 @@ ALT_NAMES=0
 if [ $# -gt 0 ] ; then
   while true ; do
     case $1 in
-      -u|--update)      JOB_UPDATE=1 ;;
       -i|--install)     JOB_INSTALL=1 ;;
+      -u|--update)      JOB_UPDATE=1 ;;
       -b|--backup)      JOB_BACKUP=1 ;;
       -r|--restore)     JOB_RESTORE=1 ;;
       -p|--purge)       JOB_PURGE=1 ;;
-      -x|--destination) shift; PATH_DEST=$1;;
-      -a|--alt-subs)    ALT_NAMES=1;;
-      -d|--debug)       LOG_LEVEL='DEBUG';;
-      -v|--verbose)     shift; set -x ;;
+      -a|--application) shift; APPS=$1;;
+      --destination)    shift; PATH_DEST=$1;;
+      --domain)         shift; DOMAIN=$1;;
+      --alt-names)      ALT_NAMES=1;;
+      --ext-proxy)      EXT_PROXY=1;;
+      --debug)          LOG_LEVEL='DEBUG';;
+      --verbose)        set -x ;;
       -h|-?|--help)     echo -e "${USAGE}"; exit 2;;
-      *)                echo -e "${ERROR}\n\n${HEADER}"; exit 2;;
+      *)                echo -e "${ERROR}\n"; exit 2;;
     esac
     shift
     [ $# -eq 0 ] && break
   done
 fi
+
 #if [ "${JOB_UPDATE}" == "0" ] && [ "${JOB_INSTALL}" == "0" ] && [ "${JOB_PURGE}" == "0" ] ; then
 #  printf "${ERROR}"
 #  exit 1
@@ -219,15 +223,6 @@ function checkMemoryusage() {
     exit 1
   else 
     logger DEBUG "There is ${MEM_FREE}kb system memory avalable."
-  fi
-}
-
-function checkNetwork() {
-  if wget -qO- --tries=10 --timeout=5 http://www.sourceindex.de/$(basename $0) &> /dev/null ; then
-    logger DEBUG "Successfully checkt network connection."
-  else
-    logger ERROR "Please check the internet configuration, something went wrong!"
-    exit 1
   fi
 }
 
@@ -443,6 +438,11 @@ function createVhost() {
     VHOST_FILE="/etc/httpd/conf.d/${1}"
     SSL_FOLDER="/etc/ssl/certs" # have to be determined
   fi 
+  if [ ${EXT_PROXY} -eq 1 ] ; then
+    SERVER_IP=$(ifconfig eth0 | grep "inet addr" | awk -F':' '{print $2}' | awk '{print $1}')
+  else
+    SERVER_IP='127.0.0.1'
+  fi
   APACHE_LOG_DIR='${APACHE_LOG_DIR}'
   if [ ! -f ${VHOST_FILE} ]; then
     cat > ${VHOST_FILE} << EOF
@@ -487,8 +487,8 @@ function createVhost() {
     Allow from all
   </Proxy>
         
-  ProxyPass         / http://0.0.0.0:${TOMCAT_PORT}/
-  ProxyPassReverse  / http://0.0.0.0:${TOMCAT_PORT}/
+  ProxyPass         / http://${SERVER_IP}:${TOMCAT_PORT}/
+  ProxyPassReverse  / http://${SERVER_IP}:${TOMCAT_PORT}/
 
   <Location />
     Order allow,deny
@@ -645,9 +645,9 @@ function startApp() {
     logger DEBUG "The \"${1}\" applications is not running, so start it."
     SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name startup.sh)
     if su ${1} -l -c "${SCRIPT_START} &> /dev/null" ; then
-      logger INFO "successfuly start application ${1} with ${SCRIPT_START}"
+      logger INFO "successfuly start application ${1}"
     else 
-      logger ERROR "can't start application ${1} with ${SCRIPT_START}"
+      logger ERROR "can't start application ${1}"
     fi
   fi
 }
@@ -784,9 +784,14 @@ function configTomcatProxy() {
     if ! grep ${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
       logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" seems not to be configured."
       if xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "" ${TOMCAT_CONFIG} &> /dev/null ; then
-	logger DEBUG "Successfully set application context path for ${1}."
+    	logger DEBUG "Successfully set application context path for ${1}."
       else
         logger ERROR "Can't set set application context path for ${1}."
+      fi
+      if xmlstarlet ed -L -PS -u "/Server/Service/Connector/@connectionTimeout" -v "120000" ${TOMCAT_CONFIG} &> /dev/null ; then
+        logger DEBUG "Successfully set application proxy timeout for ${1}."
+      else
+        logger ERROR "Can't set set application proxy timeout for ${1}."
       fi
       if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${APP_NAME}.${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
         logger DEBUG "Successfully set application proxy name for ${1}."
@@ -802,6 +807,13 @@ function configTomcatProxy() {
         logger DEBUG "Successfully set application proxy scheme for ${1}."
       else
         logger ERROR "Can't set set application proxy scheme for ${1}."
+      fi
+      if [ ${EXT_PROXY} -ne 1 ] ; then
+        if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n address -v "127.0.0.1" ${TOMCAT_CONFIG} &> /dev/null ; then
+          logger DEBUG "Successfully set application proxy scheme for ${1}."
+        else
+          logger ERROR "Can't set set application proxy scheme for ${1}."
+        fi
       fi
     else
       logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" is already configured."
@@ -1069,7 +1081,7 @@ function restoreLatestData() {
       exit 1
     fi
   else
-    logger ERROR "Last backup ${BACKUPLATEST} is not validated, script will exit now."
+    logger ERROR "last backup ${BACKUPLATEST} is not validated, script will exit now."
     exit 1
   fi
 }
@@ -1102,9 +1114,9 @@ function restoreDatabase() {
   fi
   if [ ! "x${MYSQL_PASSWORD}" == "x" ] ; then
     if mysql -u${1} -p${MYSQL_PASSWORD} ${1} < ${PATH_DATA}/${1}_database_backup.sql ; then
-      logger INFO "Succesfully restore ${1} dump ${PATH_DATA}/${1}_database_backup.sql"
+      logger INFO "succesfully restore ${1} dump ${PATH_DATA}/${1}_database_backup.sql"
     else
-      logger ERROR "Can't restore ${1} dump ${PATH_DATA}/${1}_database_backup.sql"
+      logger ERROR "can't restore ${1} dump ${PATH_DATA}/${1}_database_backup.sql"
     fi
   else
     logger ERROR "can't grep database credentials from ${1} config"
@@ -1115,8 +1127,6 @@ function restoreDatabase() {
 #-----------------------------------------------------------------------------------------------------
 # function calls
 #-----------------------------------------------------------------------------------------------------
-#echo -e "${HEADER}"
-
 if [ ${JOB_UPDATE} -eq 1 ] ; then
   checkFilesystem
   checkNetwork
@@ -1132,14 +1142,13 @@ if [ ${JOB_UPDATE} -eq 1 ] ; then
     serverMemorycalc ${APP}
     setFixes ${APP}
     startApp ${APP}
-    logger INFO "Succasfully updated \"${APP}\"."
+    logger INFO "succasfully updated ${APP}"
   done
 fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
   checkMemoryusage
   checkFilesystem
-  #checkNetwork
   deployLatestJava
   installTools
   installPostfix
@@ -1162,9 +1171,9 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     setFixes ${APP}
     startApp ${APP}
     createVhost ${APP}
-    logger INFO "Succasfully installed \"${APP}\"."
+    logger INFO "succasfully installed ${APP}"
   done
-  logger INFO "Congratulations, successfully finished \"$(basename $0)\".\n"
+  logger INFO "congratulations successfully finished $(basename $0)\n"
 fi 
 
 if [ ${JOB_BACKUP} -eq 1 ] ; then
@@ -1199,7 +1208,7 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
     purgeFolders ${APP}
     purgeInitScript ${APP}
     purgeVhost ${APP}
-    logger INFO "Succasfully purged \"${APP}\"."
+    logger INFO "succasfully purged ${APP}"
   done
 fi
 
