@@ -55,7 +55,7 @@ USAGE="USAGE: $(basename $0) [OPTIONS]...
 -r --restore:    
 -p --purge:      
 -x --destination: 
--a --alt-urls:    
+-a --alt-subs:    
 -d --debug:	  gibt eine detaillierte Ausgebe zur verarbeitung des Skripts aus
 -h -? --help:     gibt diesen Hilfetext aus.
 
@@ -87,7 +87,7 @@ VERSION_NOW=0
 VERSION_UPDATE=0
 PKG_DEBIAN="git xmlstarlet"
 PKG_REDHAT=""
-ALT_URLS=0
+ALT_NAMES=0
 
 #-----------------------------------------------------------------------------------------------------
 # control structure
@@ -101,7 +101,7 @@ if [ $# -gt 0 ] ; then
       -r|--restore)     JOB_RESTORE=1 ;;
       -p|--purge)       JOB_PURGE=1 ;;
       -x|--destination) shift; PATH_DEST=$1;;
-      -a|--alt-urls)    ALT_URLS=1;;
+      -a|--alt-subs)    ALT_NAMES=1;;
       -d|--debug)       LOG_LEVEL='DEBUG';;
       -v|--verbose)     shift; set -x ;;
       -h|-?|--help)     echo -e "${USAGE}"; exit 2;;
@@ -423,8 +423,18 @@ function createCerts() {
 function createVhost() {
   TOMCAT_CONFIG=$(find ${PATH_DEST}/${1} -name server.xml)
   TOMCAT_PORT=$(xmlstarlet sel -t -m Server/Service/Connector -v @port ${TOMCAT_CONFIG})
-  if [ ${ALT_URLS} == 1 ]; then
-    echo "test"
+  if [ ${ALT_NAMES} -eq 1 ] ; then
+    if [ ${1} == "jira" ]; then
+        APP_NAME="projects"
+    elif [ ${1} == "confluence" ]; then
+        APP_NAME="wiki"
+    elif [ ${1} == "stash" ]; then
+        APP_NAME="git"
+    elif [ ${1} == "crowd" ]; then
+        APP_NAME="id"
+    fi
+  else
+    APP_NAME=${1}
   fi
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     VHOST_FILE="/etc/apache2/sites-available/${1}"
@@ -437,7 +447,7 @@ function createVhost() {
   if [ ! -f ${VHOST_FILE} ]; then
     cat > ${VHOST_FILE} << EOF
 <VirtualHost *:80>
-  ServerName        ${1}.${DOMAIN}
+  ServerName        ${APP_NAME}.${DOMAIN}
   ServerAdmin       webmaster@${DOMAIN}
   ServerSignature   Off
  
@@ -451,7 +461,7 @@ function createVhost() {
 </VirtualHost>
  
 <VirtualHost *:443>
-  ServerName        ${1}.${DOMAIN} 
+  ServerName        ${APP_NAME}.${DOMAIN} 
   ServerAdmin       webmaster@${DOMAIN}
   ServerSignature   Off
  
@@ -480,7 +490,7 @@ function createVhost() {
   ProxyPass         / http://0.0.0.0:${TOMCAT_PORT}/
   ProxyPassReverse  / http://0.0.0.0:${TOMCAT_PORT}/
 
-  <Location /${1}>
+  <Location />
     Order allow,deny
     Allow from all
   </Location>
@@ -757,6 +767,19 @@ function deployLatestBin() {
 
 function configTomcatProxy() {
   TOMCAT_CONFIG=$(find ${PATH_DEST}/${1} -name server.xml)
+  if [ ${ALT_NAMES} -eq 1 ] ; then
+    if [ ${1} == "jira" ]; then
+        APP_NAME="projects"
+    elif [ ${1} == "confluence" ]; then
+        APP_NAME="wiki"
+    elif [ ${1} == "stash" ]; then
+        APP_NAME="git"
+    elif [ ${1} == "crowd" ]; then
+        APP_NAME="id"
+    fi
+  else
+    APP_NAME=${1}
+  fi
   if [ -f ${TOMCAT_CONFIG} ] ; then 
     if ! grep ${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
       logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" seems not to be configured."
@@ -765,7 +788,7 @@ function configTomcatProxy() {
       else
         logger ERROR "Can't set set application context path for ${1}."
       fi
-      if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${1}.${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
+      if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${APP_NAME}.${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
         logger DEBUG "Successfully set application proxy name for ${1}."
       else
         logger ERROR "Can't set set application proxy name for ${1}."
