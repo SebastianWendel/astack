@@ -12,9 +12,6 @@
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
 # alias purge="sudo ./astack4atlassian -p && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
-# add external apache procedure
-# add applicatian parameters
-# check if exists add partitial install
 # full usage output
 # add support for bamboo
 # add support for fisheye
@@ -22,7 +19,6 @@
 # check 32bit distributions
 # check redhat distributions
 # check debian distributions
-# test single and multi application install
 # check if mysql jdbc driver already exits and then do nothing
 # add installation of https://bobswift.atlassian.net/wiki/display/ACLI/Atlassian+CLI+license
 
@@ -32,7 +28,7 @@
 APPS='crowd confluence jira stash'
 PATH_DEST='/opt'
 TEMP='/tmp'
-LOG_FILE="${PATH_DEST}/astack.log"
+LOG_FILE="astack.log"
 LOG_LEVEL='INFO'
 DOMAIN='example.org'
 MAXBACKUPS=14
@@ -400,16 +396,23 @@ function createCerts() {
     fi
   fi
   if [ -f ${PATH_DEST}/java/current/lib/security/cacerts ] ; then
-    if ${PATH_DEST}/java/current/bin/keytool  -import \
-                                              -trustcacerts \
-                                              -keystore ${PATH_DEST}/java/current/lib/security/cacerts \
-                                              -storepass changeit -noprompt \
-                                              -alias "${DOMAIN}" \
-                                              -file ${SSL_FOLDER}/${DOMAIN}.pem &> /dev/null ; then
-      logger DEBUG "Successfully imported the Wildcard SSL Certificate in to Java keystore."
+    if ! ${PATH_DEST}/java/current/bin/keytool  -list \
+                                                -keystore ${PATH_DEST}/java/current/lib/security/cacerts \
+                                                -storepass changeit -noprompt \
+                                                -alias "${DOMAIN}" &> /dev/null ; then
+      if ${PATH_DEST}/java/current/bin/keytool  -import \
+                                                -trustcacerts \
+                                                -keystore ${PATH_DEST}/java/current/lib/security/cacerts \
+                                                -storepass changeit -noprompt \
+                                                -alias "${DOMAIN}" \
+                                                -file ${SSL_FOLDER}/${DOMAIN}.pem &> /dev/null ; then
+        logger DEBUG "Successfully imported the Wildcard SSL Certificate in to Java keystore."
+      else
+        logger ERROR "Can't import the Wildcard SSL Certificate in to Java keystore."
+      fi 
     else
-      logger ERROR "Can't import the Wildcard SSL Certificate in to Java keystore."
-    fi 
+      logger DEBUG "Wildcard SSL Certificate already imported in to Java keystore."
+    fi
   else
     logger ERROR "Java keystore \"${PATH_DEST}/java/current/lib/security/cacerts.\" does not exists, can't import."
   fi
@@ -444,8 +447,7 @@ function createVhost() {
     SERVER_IP='127.0.0.1'
   fi
   APACHE_LOG_DIR='${APACHE_LOG_DIR}'
-  if [ ! -f ${VHOST_FILE} ]; then
-    cat > ${VHOST_FILE} << EOF
+  VHOST_CONFIG=$(cat << EOF
 <VirtualHost *:80>
   ServerName        ${APP_NAME}.${DOMAIN}
   ServerAdmin       webmaster@${DOMAIN}
@@ -468,8 +470,10 @@ function createVhost() {
   SSLEngine         On
   SSLProtocol       -all +SSLv3 +TLSv1
   SSLCipherSuite    SSLv3:+HIGH:+MEDIUM
+  # PLEASE CHANGE THAT PART TO YOUR NEEDS
   SSLCertificateFile ${SSL_FOLDER}/${DOMAIN}.pem
   SSLCertificateKeyFile ${SSL_FOLDER}/${DOMAIN}.key
+  #SSLCertificateChainFile ${SSL_FOLDER}/gd_bundle.crt
  
   ErrorLog          ${APACHE_LOG_DIR}/${1}_error.log
   CustomLog         ${APACHE_LOG_DIR}/${1}_access.log combined
@@ -496,27 +500,35 @@ function createVhost() {
   </Location>
 </VirtualHost>
 EOF
-    logger DEBUG "Created Apache vhost config for \"${1}\"."
+)
+  if [ ${EXT_PROXY} -ne 1 ] ; then
+    if [ ! -f ${VHOST_FILE} ]; then
+      if echo "${VHOST_CONFIG}" > ${VHOST_FILE} ; then
+        logger DEBUG "Created Apache vhost config for ${1}."
+      else
+        logger DEBUG "Apache vhost config for \"${1}\" already exists."
+      fi
+    fi
+    if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
+      if a2ensite ${1} &> /dev/null ; then
+        logger DEBUG "Succesfully enabled apache vhost config for \"${1}\"."
+      else 
+        logger ERROR "Can't enabled apache vhost config for \"${1}\", something went wrong."
+      fi
+      if a2dissite default default-ssl &> /dev/null ; then
+        logger DEBUG "Succesfully disable default apache vhost config."
+      else 
+        logger ERROR "Can't disable default apache vhost config."
+      fi
+      if service apache2 reload &> /dev/null ; then
+        logger DEBUG "Succesfully reload apache vhost config."
+      else 
+        logger ERROR "Can't reload apache vhost config."
+      fi
+    fi
   else
-    logger DEBUG "Apache vhost config for \"${1}\" already exists."
-  fi
-  if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    if a2ensite ${1} &> /dev/null ; then
-      logger DEBUG "Succesfully enabled apache vhost config for \"${1}\"."
-    else 
-      logger ERROR "Can't enabled apache vhost config for \"${1}\", something went wrong."
-    fi
-    if a2dissite default default-ssl &> /dev/null ; then
-      logger DEBUG "Succesfully disable default apache vhost config."
-    else 
-      logger ERROR "Can't disable default apache vhost config."
-    fi
-    if service apache2 reload &> /dev/null ; then
-      logger DEBUG "Succesfully reload apache vhost config."
-    else 
-      logger ERROR "Can't reload apache vhost config."
-    fi
-  fi
+    logger INFO "Save the following config to your Proxy-Server ${VHOST_CONFIG} and change the SSL settings. \n\n${VHOST_CONFIG}\n"
+  fi    
 }
 
 function purgeVhost() {
@@ -547,15 +559,6 @@ function createFolders() {
   else 
     logger DEBUG "Folder \"${PATH_DEST}/${1}\" already exists."
   fi
-#  if [ ! -d ${PATH_DATA} ] ; then
-#    if mkdir -p ${PATH_DATA} &> /dev/null ; then
-#      logger DEBUG "Succesfully created folder \"${PATH_DATA}\"."
-#    else
-#      logger ERROR "Can't create folder \"${PATH_DATA}\"."
-#    fi
-#  else 
-#    logger DEBUG "Folder \"${PATH_DATA}\" already exists."
-#  fi
   if [ ! -d ${PATH_BACKUP} ] ; then
     if mkdir -p ${PATH_BACKUP} &> /dev/null ; then
       logger DEBUG "Succesfully created folder \"${PATH_BACKUP}\"."
@@ -927,10 +930,6 @@ EOF
   fi
 }
 
-function createLogrotate() {
-  echo "deployLatestBin"
-}
-
 function backupDatabase() { 
   if [ ${1} == "jira" ]; then
     APP_CONFIG=$(find ${PATH_DATA}/ -name dbconfig.xml)
@@ -1152,8 +1151,10 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
   deployLatestJava
   installTools
   installPostfix
-  installApache
-  createCerts
+  if [ ${EXT_PROXY} -ne 1 ] ; then
+    installApache
+    createCerts
+  fi
   installMySQL
   for APP in ${APPS}; do
     PATH_DATA="${PATH_DEST}/${APP}/data"
@@ -1207,7 +1208,9 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
     purgeCredentials ${APP}
     purgeFolders ${APP}
     purgeInitScript ${APP}
-    purgeVhost ${APP}
+    if [ ${EXT_PROXY} -ne 1 ] ; then
+      purgeVhost ${APP}
+    fi
     logger INFO "succasfully purged ${APP}"
   done
 fi
