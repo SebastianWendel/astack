@@ -1,7 +1,7 @@
 #!/bin/bash
 #-----------------------------------------------------------------------------------------------------
 # File:         astack4atlassian
-# Description:  install, update and backup atlassian products
+# Description:  install, update, backup and restore atlassian products
 # Plattform:    Debian, Ubuntu
 # Created:      01.09.2012
 # Author:       Sebastian Wendel, SourceIndex IT-Services, Hamburg/Germany
@@ -9,18 +9,21 @@
 #-----------------------------------------------------------------------------------------------------
 
 #-----------------------------------------------------------------------------------------------------
+# DevOpts:
+#-----------------------------------------------------------------------------------------------------
+# alias purge="sudo ./astack4atlassian purge && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
+
+#-----------------------------------------------------------------------------------------------------
 # ToDos:
 #-----------------------------------------------------------------------------------------------------
-# alias purge="sudo ./astack4atlassian -p && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
-# full usage output
 # add support for bamboo
 # add support for fisheye
 # add support for crucible
+# add support for atlassian cli
 # check 32bit distributions
 # check redhat distributions
 # check debian distributions
 # check if mysql jdbc driver already exits and then do nothing
-# add installation of https://bobswift.atlassian.net/wiki/display/ACLI/Atlassian+CLI+license
 
 #-----------------------------------------------------------------------------------------------------
 # configuration (only this section can be changed)
@@ -30,35 +33,94 @@ PATH_DEST='/opt'
 TEMP='/tmp'
 LOG_FILE="astack.log"
 LOG_LEVEL='INFO'
-DOMAIN='example.org'
 MAXBACKUPS=14
 
 #-----------------------------------------------------------------------------------------------------
 # script usage
 #-----------------------------------------------------------------------------------------------------
-HEADER="$(basename $0) - comes with absolutely no warranty!"
+USAGE="\nUSAGE: $(basename $0) [SUBCOMMAND] [OPTIONS] ...
 
-USAGE="USAGE: $(basename $0) [OPTIONS]...
+Subcommands:
+install:        installs the specified applications
+update:         update the specified applications to the latest release
+backup:         backup the current applications
+restore:        restore the specified applications from the latest backup
+purge:          purges all installations, unless mysql and apache
 
--i --install:     
--u --update:      
--b --backup:      
--r --restore:     
--p --purge:       
--a --application:
---destination:    
---domain:         
---alt-names:      
---ext-proxy:     
---debug:	     gibt eine detaillierte Ausgebe zur verarbeitung des Skripts aus
---verbose:	      
--h -? --help:    gibt diesen Hilfetext aus.
+Options:
+--domain:       specifie the your domain, the default is: ${DOMAIN}
+--applications: specifie the applications, the default is: ${APPS}
+--destination:  specifie the destination folder, the default is: ${PATH_DEST}
+--alt-names:    specifie altenative secondary domain names 
+--ext-proxy:    use that switch to export the proxy config for another system
+--debug:        run the script with debugging output
+--verbose:      run the script with developer output
+-h -? --help:   show that help output
+
+Some Examples:
+$(basename $0) install --domain atlassian.org --alt-names --ext-proxy
+$(basename $0) install --domain atlassian.org --alt-names --applications \"confluence jira\"
+$(basename $0) update --domain atlassian.org --alt-names --ext-proxy
+$(basename $0) backup
+$(basename $0) restore
 
 Exit status:
  0  if OK,
  1  if minor problems.\n"
 
-ERROR="\nERROR: You need to pass a sub-command (e.g., knife SUB-COMMAND)\n"
+ERROR="\nERROR: You need to pass a subcommand like install or update and a option like --domain\n"
+
+#-----------------------------------------------------------------------------------------------------
+# variable
+#-----------------------------------------------------------------------------------------------------
+TIMESTAMP=$(date +%Y%m%d%H%M%S)
+DOMAIN=0
+JOB_UPDATE=0
+JOB_INSTALL=0
+JOB_BACKUP=0
+JOB_RESTORE=0
+JOB_PURGE=0
+VERSION_NOW=0
+VERSION_UPDATE=0
+ALT_NAMES=0
+EXT_PROXY=0
+PKG_DEBIAN="git xmlstarlet"
+PKG_REDHAT=""
+
+#-----------------------------------------------------------------------------------------------------
+# control structure
+#-----------------------------------------------------------------------------------------------------
+if [ $# -gt 0 ] ; then
+  while true ; do
+    case $1 in
+      install)       JOB_INSTALL=1 ;;
+      update)        JOB_UPDATE=1 ;;
+      backup)        JOB_BACKUP=1 ;;
+      restore)       JOB_RESTORE=1 ;;
+      purge)         JOB_PURGE=1 ;;
+      --domain)      shift; DOMAIN=$1 ;;
+      --application) shift; APPS=$1 ;;
+      --destination) shift; PATH_DEST=$1 ;;
+      --alt-names)   ALT_NAMES=1 ;;
+      --ext-proxy)   EXT_PROXY=1 ;;
+      --debug)       LOG_LEVEL='DEBUG' ;;
+      --verbose)     shift; set -x ;;
+      -h|-?|--help)  echo -e "${USAGE}"; exit ;;
+      *)             echo -e "${ERROR}"; exit 1 ;;
+    esac
+    shift
+    [ $# -eq 0 ] && break
+  done
+fi
+
+if [ "${JOB_INSTALL}" -eq 0 ] || [ "${JOB_UPDATE}" -eq 0 ] || [ "${JOB_PURGE}" -eq 0 ] || [ "${JOB_BACKUP}" -eq 0 ]; then
+  if [ "${JOB_INSTALL}" -ne 0 ] || [ "${JOB_UPDATE}" -ne 0 ]; then
+    if [ "${DOMAIN}" == "0" ] || [ "x${DOMAIN}" == "x" ]; then
+      echo -e "${ERROR}"
+      exit 1
+    fi
+  fi
+fi
 
 #-----------------------------------------------------------------------------------------------------
 # script behavior
@@ -68,53 +130,6 @@ ERROR="\nERROR: You need to pass a sub-command (e.g., knife SUB-COMMAND)\n"
 
 # SET OUTPUT REDIRECTION
 exec > >(tee -a ${LOG_FILE}) 2>&1
-
-#-----------------------------------------------------------------------------------------------------
-# variable
-#-----------------------------------------------------------------------------------------------------
-TIMESTAMP=$(date +%Y%m%d%H%M%S)
-JOB_UPDATE=0
-JOB_INSTALL=0
-JOB_BACKUP=0
-JOB_RESTORE=0
-JOB_PURGE=0
-VERSION_NOW=0
-VERSION_UPDATE=0
-PKG_DEBIAN="git xmlstarlet"
-PKG_REDHAT=""
-ALT_NAMES=0
-EXT_PROXY=0
-
-#-----------------------------------------------------------------------------------------------------
-# control structure
-#-----------------------------------------------------------------------------------------------------
-if [ $# -gt 0 ] ; then
-  while true ; do
-    case $1 in
-      -i|--install)     JOB_INSTALL=1 ;;
-      -u|--update)      JOB_UPDATE=1 ;;
-      -b|--backup)      JOB_BACKUP=1 ;;
-      -r|--restore)     JOB_RESTORE=1 ;;
-      -p|--purge)       JOB_PURGE=1 ;;
-      -a|--application) shift; APPS=$1;;
-      --destination)    shift; PATH_DEST=$1;;
-      --domain)         shift; DOMAIN=$1;;
-      --alt-names)      ALT_NAMES=1;;
-      --ext-proxy)      EXT_PROXY=1;;
-      --debug)          LOG_LEVEL='DEBUG';;
-      --verbose)        set -x ;;
-      -h|-?|--help)     echo -e "${USAGE}"; exit 2;;
-      *)                echo -e "${ERROR}\n"; exit 2;;
-    esac
-    shift
-    [ $# -eq 0 ] && break
-  done
-fi
-
-#if [ "${JOB_UPDATE}" == "0" ] && [ "${JOB_INSTALL}" == "0" ] && [ "${JOB_PURGE}" == "0" ] ; then
-#  printf "${ERROR}"
-#  exit 1
-#fi
 
 #-----------------------------------------------------------------------------------------------------
 # environment
