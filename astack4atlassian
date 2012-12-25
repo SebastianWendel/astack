@@ -14,19 +14,7 @@
 # alias purge="sudo ./astack4atlassian purge && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
 
 #-----------------------------------------------------------------------------------------------------
-# ToDos:
-#-----------------------------------------------------------------------------------------------------
-# add support for bamboo
-# add support for fisheye
-# add support for crucible
-# add support for atlassian cli
-# check 32bit distributions
-# check redhat distributions
-# check debian distributions
-# check if mysql jdbc driver already exits and then do nothing
-
-#-----------------------------------------------------------------------------------------------------
-# configuration (only this section can be changed)
+# configuration
 #-----------------------------------------------------------------------------------------------------
 APPS='crowd confluence jira stash'
 PATH_DEST='/opt'
@@ -48,7 +36,7 @@ restore:        restore the specified applications from the latest backup
 purge:          purges all installations, unless mysql and apache
 
 Options:
---domain:       specifie the your domain, the default is: ${DOMAIN}
+--domain:       specifie the your domain, there is no default
 --applications: specifie the applications, the default is: ${APPS}
 --destination:  specifie the destination folder, the default is: ${PATH_DEST}
 --alt-names:    specifie altenative secondary domain names 
@@ -58,9 +46,9 @@ Options:
 -h -? --help:   show that help output
 
 Some Examples:
-$(basename $0) install --domain atlassian.org --alt-names --ext-proxy
-$(basename $0) install --domain atlassian.org --alt-names --applications \"confluence jira\"
-$(basename $0) update --domain atlassian.org --alt-names --ext-proxy
+$(basename $0) install --domain example.com --alt-names --ext-proxy
+$(basename $0) install --domain example.com --alt-names --applications \"confluence jira\"
+$(basename $0) update --domain example.com --alt-names --ext-proxy
 $(basename $0) backup
 $(basename $0) restore
 
@@ -90,6 +78,11 @@ PKG_REDHAT=""
 #-----------------------------------------------------------------------------------------------------
 # control structure
 #-----------------------------------------------------------------------------------------------------
+if [ "x${1}" == "x" ]; then
+  echo -e "${USAGE}"
+  exit 1
+fi
+
 if [ $# -gt 0 ] ; then
   while true ; do
     case $1 in
@@ -1156,7 +1149,7 @@ if [ ${JOB_UPDATE} -eq 1 ] ; then
     serverMemorycalc ${APP}
     setFixes ${APP}
     startApp ${APP}
-    logger INFO "succasfully updated ${APP}"
+    logger INFO "Succasfully updated ${APP}."
   done
 fi
 
@@ -1187,9 +1180,9 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     setFixes ${APP}
     startApp ${APP}
     createVhost ${APP}
-    logger INFO "succasfully installed ${APP}"
+    logger INFO "Succasfully installed ${APP}."
   done
-  logger INFO "congratulations successfully finished $(basename $0)\n"
+  logger INFO "Successfully finished $(basename $0).\n"
 fi 
 
 if [ ${JOB_BACKUP} -eq 1 ] ; then
@@ -1201,6 +1194,7 @@ if [ ${JOB_BACKUP} -eq 1 ] ; then
     backupDatabase ${APP}
     backupHome ${APP}
     startApp ${APP}
+    logger INFO "Succasfully backup ${APP}."
   done
 fi
 
@@ -1213,6 +1207,7 @@ if [ ${JOB_RESTORE} -eq 1 ] ; then
     restoreLatestData ${APP}
     restoreDatabase ${APP}
     startApp ${APP}
+    logger INFO "Succasfully restore ${APP}."
   done
 fi
 
@@ -1226,7 +1221,7 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
     if [ ${EXT_PROXY} -ne 1 ] ; then
       purgeVhost ${APP}
     fi
-    logger INFO "succasfully purged ${APP}"
+    logger INFO "Succasfully purged ${APP}."
   done
 fi
 
