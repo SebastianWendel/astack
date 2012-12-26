@@ -4,6 +4,7 @@
 # Description:  install, update, backup and restore atlassian products
 # Plattform:    Debian, Ubuntu
 # Created:      01.09.2012
+# Version:      0.1.0
 # Author:       Sebastian Wendel, SourceIndex IT-Services, Hamburg/Germany
 # License:      Apache License, Version 2.0
 #-----------------------------------------------------------------------------------------------------
@@ -18,10 +19,11 @@
 #-----------------------------------------------------------------------------------------------------
 APPS='crowd confluence jira stash'
 PATH_DEST='/opt'
-TEMP='/tmp'
+PATH_TEMP='/tmp'
 LOG_FILE="astack.log"
 LOG_LEVEL='INFO'
-MAXBACKUPS=14
+MAX_BINS=3
+MAX_BACKUPS=7
 
 #-----------------------------------------------------------------------------------------------------
 # script usage
@@ -33,7 +35,7 @@ install:        installs the specified applications
 update:         update the specified applications to the latest release
 backup:         backup the current applications
 restore:        restore the specified applications from the latest backup
-purge:          purges all installations, unless mysql and apache
+purge:          remove all installations including there data, but no system componets
 
 Options:
 --domain:       specifie the your domain, there is no default
@@ -46,15 +48,15 @@ Options:
 -h -? --help:   show that help output
 
 Some Examples:
-$(basename $0) install --domain example.com --alt-names --ext-proxy
+$(basename $0) install --domain example.com
 $(basename $0) install --domain example.com --alt-names --applications \"confluence jira\"
 $(basename $0) update --domain example.com --alt-names --ext-proxy
 $(basename $0) backup
 $(basename $0) restore
 
 Exit status:
- 0  if OK,
- 1  if minor problems.\n"
+ 0  if OK
+ 1  if minor problems\n"
 
 ERROR="\nERROR: You need to pass a subcommand like install or update and a option like --domain\n"
 
@@ -211,10 +213,10 @@ function logger() {
 function checkFilesystem() {
   FILESYSTEM_SPACE=$(df ${PATH_DEST} | grep -vE '^Filesystem|tmpfs|cdrom' | awk '{print $4}')
   if [ ${FILESYSTEM_SPACE} -lt 1024000 ] ; then
-    logger ERROR "There is not enothe filesystem space to procedure, script will exit!"
+    logger ERROR "There is not enough filesystem space left \"${FILESYSTEM_SPACE}kb\" you need at least \"1024000kb\", script will exit!"
     exit 1
   else 
-    logger DEBUG "There is ${FILESYSTEM_SPACE}kb space left on your destination directory ${PATH_DEST}."
+    logger DEBUG "There is \"${FILESYSTEM_SPACE}kb\" space left on your destination directory \"${PATH_DEST}\"."
   fi
 }
 
@@ -223,10 +225,10 @@ function checkMemoryusage() {
   APPS_NUM=$(echo ${APPS} | wc -w)
   MEM_APP=$(echo "${MEM_FREE} / ${APPS_NUM}" | bc)
   if [ ${MEM_APP} -lt 262144 ] ; then
-    logger ERROR "There is not enothe system memory avalable to to procedure, script will exit!"
+    logger ERROR "There is not enothe system memory avalable \"${MEM_FREE}kb\" to procedure you need at least \"262144kb\", script will exit!"
     exit 1
   else 
-    logger DEBUG "There is ${MEM_FREE}kb system memory avalable."
+    logger DEBUG "There is \"${MEM_FREE}kb\" system memory avalable."
   fi
 }
 
@@ -239,6 +241,7 @@ function installTools() {
           logger DEBUG "Successfully installed tool \"${PKG}\"."
         else
           logger ERROR "Can't install tool \"${PKG}\", please check logfiles."
+          exit 1
         fi
       else
         logger DEBUG "Tool \"${PKG}\" is alredy installed."
@@ -255,6 +258,7 @@ function installApache() {
         logger DEBUG "Successfully installed Apache Web-Server."
       else
         logger ERROR "Can't install Apache Web-Server, please check logs."
+        exit 1
       fi
     else
       logger DEBUG "Apache Web-server is alredy installed."
@@ -263,6 +267,7 @@ function installApache() {
       logger DEBUG "Successfully loaded Apache Web-Server modules."
     else
       logger ERROR "Can't load Apache Web-Server modules, please have a look to the Apache logfiles."
+      exit 1
     fi
     if ! grep "NameVirtualHost \*:443" /etc/apache2/ports.conf | grep -v "#" &> /dev/null ; then
       echo "NameVirtualHost *:443" >> /etc/apache2/ports.conf
@@ -274,6 +279,7 @@ function installApache() {
       logger DEBUG "Successfully restarted Apache Web-Server."
     else
       logger ERROR "Can't restarted Apache Web-Server, please have a look to the Apache logfiles."
+      exit 1
     fi
   fi
 }
@@ -286,12 +292,14 @@ function installMySQL() {
         logger DEBUG "Successfully installed MySQL-Server."
       else 
         logger ERROR "Can't install MySQL-Server, please check logs."
+        exit 1
       fi
       export MYSQL_PASS=$(openssl rand -base64 18)
       if mysql -uroot -e "UPDATE mysql.user SET password=PASSWORD('${MYSQL_PASS}') WHERE user='root'; FLUSH PRIVILEGES;"; &> /dev/null ; then
-        logger INFO "Successfully set MySQL root password to: \"${MYSQL_PASS}\", please note it will be stored in the Logfile."
+        logger INFO "Successfully set MySQL root password to \"${MYSQL_PASS}\", please note it will be stored in the Logfile."
       else
         logger ERROR "Can't set MySQL-Server root password, please check logs."
+        exit 1
       fi
     else
       logger DEBUG "MySQL-Server is alredy installed."
@@ -306,6 +314,7 @@ function installPostfix() {
         logger DEBUG "Successfully installed Postfix Mail-Server."
       else
         logger ERROR "Can't install Postfix Mail-Server, pleae check logfiles."
+        exit 1
       fi
     else
       logger DEBUG "Postfix Mail-Server is alredy installed."
@@ -318,15 +327,15 @@ function deployDriverJDBC() {
     logger ERROR "Can't get MySQL JDBC-Drver Version from \"http://dev.mysql.com/downloads/connector/j/\"."
     exit 1
   fi
-  if [ ! -f ${TEMP}/${BIN_NAME} ] ; then
-    if wget http://dev.mysql.com/get/Downloads/Connector-J/${BIN_NAME}/from/http://cdn.mysql.com/ -O ${TEMP}/${BIN_NAME} &> /dev/null ; then
-      logger DEBUG "Successfully downloaded \"${BIN_NAME}\" to \"${TEMP}\"."
+  if [ ! -f ${PATH_TEMP}/${BIN_NAME} ] ; then
+    if wget http://dev.mysql.com/get/Downloads/Connector-J/${BIN_NAME}/from/http://cdn.mysql.com/ -O ${PATH_TEMP}/${BIN_NAME} &> /dev/null ; then
+      logger DEBUG "Successfully downloaded \"${BIN_NAME}\" to \"${PATH_TEMP}\"."
     else
       logger ERROR "Can't download \"${BIN_NAME}\", please check url \"http://dev.mysql.com/get/Downloads/Connector-J/${BIN_NAME}/from/http://cdn.mysql.com/\"."
       exit 1
     fi
-    if tar xzf ${TEMP}/${BIN_NAME} -C ${TEMP} &> /dev/null ; then
-      logger DEBUG "Successfully uncompress \"${BIN_NAME}\" to \"${TEMP}\"."
+    if tar xzf ${PATH_TEMP}/${BIN_NAME} -C ${TEMP} &> /dev/null ; then
+      logger DEBUG "Successfully uncompress \"${BIN_NAME}\" to \"${PATH_TEMP}\"."
     else
       logger ERROR "Can't uncompress \"${BIN_NAME}\"."
       exit 1
@@ -336,14 +345,14 @@ function deployDriverJDBC() {
     logger DEBUG "Successfully deleted old MySQL JDBC-Driver for the application \"${1}\"."
   fi
   if [ ${1} == "crowd" ] ; then
-    if cp ${TEMP}/${BIN_NAME%.tar.gz}/${BIN_NAME%.tar.gz}-bin.jar ${PATH_DEST}/${1}/current/apache-tomcat/lib &> /dev/null ; then
+    if cp ${PATH_TEMP}/${BIN_NAME%.tar.gz}/${BIN_NAME%.tar.gz}-bin.jar ${PATH_DEST}/${1}/current/apache-tomcat/lib &> /dev/null ; then
       logger DEBUG "Successfully copied \"${BIN_NAME%.tar.gz}-bin.jar\" to \"${PATH_DEST}/${1}/current/apache-tomcat/lib\"."
     fi
     if chown ${1}:${1} ${PATH_DEST}/${1}/current/apache-tomcat/lib/${BIN_NAME%.tar.gz}-bin.jar &> /dev/null ; then
       logger DEBUG "Successfully chowned \"${PATH_DEST}/${1}/current/apache-tomcat/lib/${BIN_NAME%.tar.gz}-bin.jar\" to \"${1}\"."
     fi
   else
-    if cp ${TEMP}/${BIN_NAME%.tar.gz}/${BIN_NAME%.tar.gz}-bin.jar ${PATH_DEST}/${1}/current/lib &> /dev/null ; then
+    if cp ${PATH_TEMP}/${BIN_NAME%.tar.gz}/${BIN_NAME%.tar.gz}-bin.jar ${PATH_DEST}/${1}/current/lib &> /dev/null ; then
       logger DEBUG "Successfully copied \"${BIN_NAME%.tar.gz}-bin.jar\" to \"${PATH_DEST}/${1}/current/lib\"."
     fi
     if chown ${1}:${1} ${PATH_DEST}/${1}/current/lib/${BIN_NAME%.tar.gz}-bin.jar &> /dev/null ; then
@@ -355,8 +364,9 @@ function deployDriverJDBC() {
 function createDatabase() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ]; then
     if dpkg -s mysql-server &> /dev/null ; then
-      logger DEBUG "A MySQL Database-Server Instanc is already running, ask for password and no install!"
+      logger DEBUG "Database-Server instance is already running."
       if [ ! -n "${MYSQL_PASS}" ]; then
+        logger DEBUG "Database-Server root-password variable is not set so ask for the password."
         unset MYSQL_PASS
         PROMPT="Please enter MySQL root password: "
         while IFS= read -p "${PROMPT}" -r -s -n 1 CHAR ; do
@@ -368,6 +378,8 @@ function createDatabase() {
         done
         echo
         export MYSQL_PASS=${MYSQL_PASS}
+      else
+        logger DEBUG "Database-Server root-password variable is set, so no need to ask for the password."
       fi
     fi
   fi 
@@ -378,7 +390,7 @@ function createDatabase() {
     SQL_GRANT="GRANT ALL ON *.* TO '${1}'@'localhost' IDENTIFIED BY '${PASSWORD}';"
     SQL_FLUSH="FLUSH PRIVILEGES;"
     if mysql -u root -p${MYSQL_PASS} -Bse "${SQL_CREATE}${SQL_GRANT}${SQL_FLUSH}" &> /dev/null ; then
-      logger INFO "Successfully created database \"${1}\" with password \"${PASSWORD}\""
+      logger INFO "Successfully created database \"${1}\" with password \"${PASSWORD}\"."
     fi
   else
     logger INFO "Can't create Database \"${1}\", maybe it alredy exists!"
@@ -393,7 +405,7 @@ function createCerts() {
   fi 
   if ! dpkg -s openssl &> /dev/null ; then
     if apt-get install -y openssl &> /dev/null ; then
-      logger DEBUG "Successfully installed openssl."
+      logger DEBUG "Successfully installed openssl package."
     fi
   fi 
   if [ ! -f ${SSL_FOLDER}/${DOMAIN}.key ] && [ ! -f ${SSL_FOLDER}/${DOMAIN}.pem ] ; then
@@ -401,6 +413,7 @@ function createCerts() {
       logger DEBUG "Successfully created Wildcard SSL Certificate."
     else
       logger ERROR "Can't create the SSL Certificate at \"${SSL_FOLDER}\"."
+      exit 1
     fi
   fi
   if [ -f ${PATH_DEST}/java/current/lib/security/cacerts ] ; then
@@ -417,12 +430,14 @@ function createCerts() {
         logger DEBUG "Successfully imported the Wildcard SSL Certificate in to Java keystore."
       else
         logger ERROR "Can't import the Wildcard SSL Certificate in to Java keystore."
+        exit 1
       fi 
     else
       logger DEBUG "Wildcard SSL Certificate already imported in to Java keystore."
     fi
   else
     logger ERROR "Java keystore \"${PATH_DEST}/java/current/lib/security/cacerts.\" does not exists, can't import."
+    exit 1
   fi
 }
 
@@ -512,66 +527,77 @@ EOF
   if [ ${EXT_PROXY} -ne 1 ] ; then
     if [ ! -f ${VHOST_FILE} ]; then
       if echo "${VHOST_CONFIG}" > ${VHOST_FILE} ; then
-        logger DEBUG "Created Apache vhost config for ${1}."
+        logger DEBUG "Created Apache vhost config for \"${1}\"."
       else
         logger DEBUG "Apache vhost config for \"${1}\" already exists."
       fi
     fi
     if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
       if a2ensite ${1} &> /dev/null ; then
-        logger DEBUG "Succesfully enabled apache vhost config for \"${1}\"."
+        logger DEBUG "Successfully enabled Apache vhost config for \"${1}\"."
       else 
-        logger ERROR "Can't enabled apache vhost config for \"${1}\", something went wrong."
-      fi
-      if a2dissite default default-ssl &> /dev/null ; then
-        logger DEBUG "Succesfully disable default apache vhost config."
-      else 
-        logger ERROR "Can't disable default apache vhost config."
+        logger ERROR "Can't enabled Apache vhost config for \"${1}\", something went wrong."
+        exit 1
       fi
       if service apache2 reload &> /dev/null ; then
-        logger DEBUG "Succesfully reload apache vhost config."
+        logger DEBUG "Successfully reload Apache vhost config."
       else 
-        logger ERROR "Can't reload apache vhost config."
+        logger ERROR "Can't reload Apache vhost config."
+        exit 1
       fi
     fi
   else
-    logger INFO "Save the following config to your Proxy-Server ${VHOST_CONFIG} and change the SSL settings. \n\n${VHOST_CONFIG}\n"
+    logger INFO "Save the config to your Proxy-Server \"${VHOST_FILE}\" and change the SSL settings. \n\n${VHOST_CONFIG}\n"
   fi    
 }
 
 function purgeVhost() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    if a2dissite ${1} &> /dev/null ; then
-      logger DEBUG "Succesfully disable apache vhost config for \"${1}\"."
-      if rm -f /etc/apache2/sites-available/${1} &> /dev/null ; then
-        logger DEBUG "Succesfully removed apache vhost config for \"${1}\"."
+    VHOST_FILE="/etc/apache2/sites-available/${1}"
+  else
+    VHOST_FILE="/etc/httpd/conf.d/${1}"
+  fi 
+  if [ -f ${VHOST_FILE} ]; then
+    logger DEBUG "Found apache vhost config \"${VHOST_FILE}\"."
+    if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
+      if a2dissite ${1} &> /dev/null ; then
+        logger DEBUG "Successfully disable apache vhost config for \"${1}\"."
+        if rm -f /etc/apache2/sites-available/${1} &> /dev/null ; then
+          logger DEBUG "Successfully removed apache vhost config for \"${1}\"."
+        fi
+        if service apache2 reload &> /dev/null ; then
+          logger DEBUG "Successfully reload apache vhost config."
+        else 
+          logger ERROR "Can't reload apache vhost config."
+          exit 1
+        fi
+      else
+        logger ERROR "Can't disable apache vhost config for \"${1}\"."
+        exit 1
       fi
-      if service apache2 reload &> /dev/null ; then
-        logger DEBUG "Succesfully reload apache vhost config."
-      else 
-        logger ERROR "Can't reload apache vhost config."
-      fi
-    else
-      logger ERROR "Can't disable apache vhost config for \"${1}\"."
     fi
+  else
+    logger DEBUG "Not found apache vhost config \"${VHOST_FILE}\", so nothing to disable."
   fi 
 }
 
 function createFolders() {
   if [ ! -d ${PATH_DEST}/${1} ] ; then
     if mkdir -p ${PATH_DEST}/${1} &> /dev/null ; then
-      logger DEBUG "Succesfully created folder \"${PATH_DEST}/${1}\"."
+      logger DEBUG "Successfully created folder \"${PATH_DEST}/${1}\"."
     else
       logger ERROR "Can't create folder \"${PATH_DEST}/${1}\"."
+      exit 1
     fi
   else 
     logger DEBUG "Folder \"${PATH_DEST}/${1}\" already exists."
   fi
   if [ ! -d ${PATH_BACKUP} ] ; then
     if mkdir -p ${PATH_BACKUP} &> /dev/null ; then
-      logger DEBUG "Succesfully created folder \"${PATH_BACKUP}\"."
+      logger DEBUG "Successfully created folder \"${PATH_BACKUP}\"."
     else
       logger ERROR "Can't create folder \"${PATH_BACKUP}\"."
+      exit 1
     fi
   else 
     logger DEBUG "Folder \"${PATH_BACKUP}\" already exists."
@@ -581,12 +607,12 @@ function createFolders() {
 function purgeFolders() {
   if [ -d ${PATH_DEST}/${1} ] ; then
     if rm -rf ${PATH_DEST}/${1} &> /dev/null ; then
-      logger DEBUG "Succesfully removed folder \"${PATH_DEST}/${1}\"."
+      logger DEBUG "Successfully removed folder \"${PATH_DEST}/${1}\"."
     fi
   fi
   if [ -d ${PATH_DATA} ] ; then
     if rm -rf ${PATH_DATA} &> /dev/null ; then
-      logger DEBUG "Succesfully removed folder \"${PATH_DATA}\"."
+      logger DEBUG "Successfully removed folder \"${PATH_DATA}\"."
     fi
   fi
 }
@@ -595,14 +621,16 @@ function createCredentials() {
   if ! id -u ${1} &> /dev/null ; then
     logger DEBUG "User \"${1}\" and group \"${1}\" does not exists."
     if groupadd ${1} &> /dev/null ; then
-      logger DEBUG "Successfuly created group \"${1}\"."
+      logger DEBUG "Successfully created group \"${1}\"."
     else
       logger ERROR "Can't created group \"${1}\"."
+      exit 1
     fi 
     if useradd -s /bin/bash -r -m -g ${1} -d ${PATH_DATA} ${1} &> /dev/null ; then
-      logger DEBUG "Successfuly created user \"${1}\"."
+      logger DEBUG "Successfully created user \"${1}\"."
     else
       logger ERROR "Can't created user \"${1}\"."
+      exit 1
     fi 
   fi
 }
@@ -615,10 +643,11 @@ function setEnvirement() {
       if [ ${1} == "stash" ] ; then
         echo "export STASH_HOME=${PATH_DATA}/${1}" >> "${PATH_DATA}/.profile"
       fi
-      logger DEBUG "Succesfully added Java envirements to \".profile\"."
+      logger DEBUG "Successfully added Java envirements to \".profile\"."
     fi
   else
     logger ERROR "Profile of user \"${1}\" does not exits."
+    exit 1
   fi
 }
 
@@ -639,14 +668,14 @@ function purgeJava() {
 }
 
 function stopApp() {
-  PID=$(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}')
+  PID=$(ps -ef | grep -e java -e ${1} | grep -v -e "grep" -e "$(basename $0)" | awk '{print $2}')
   if [ ! "x${PID}" == "x" ] ; then
-    logger DEBUG "the ${1} applications pid is ${PID}"
+    logger DEBUG "the ${1} applications pid is \"${PID}\"."
     while ps ef ${PID} &> /dev/null ; do
       kill ${PID} &> /dev/null
       sleep 2
     done
-    logger INFO "successfuly stop application ${1} with pid ${PID}"
+    logger INFO "Successfully stop application \"${1}\" with pid \"${PID}\"."
   fi
 }
 
@@ -656,9 +685,10 @@ function startApp() {
     logger DEBUG "The \"${1}\" applications is not running, so start it."
     SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name startup.sh)
     if su ${1} -l -c "${SCRIPT_START} &> /dev/null" ; then
-      logger INFO "successfuly start application ${1}"
+      logger INFO "Successfully start application \"${1}\"."
     else 
-      logger ERROR "can't start application ${1}"
+      logger ERROR "Can't start application \"${1}\"."
+      exit 1
     fi
   fi
 }
@@ -669,6 +699,7 @@ function deployLatestJava() {
       logger DEBUG "Sucessfully created folder \"${PATH_DEST}/java\"."
     else
       logger ERROR "Can't created folder \"${PATH_DEST}/java\"."
+      exit 1
     fi
   else
     logger DEBUG "Folder \"${PATH_DEST}/java\" already exit's and can't be created."
@@ -678,29 +709,30 @@ function deployLatestJava() {
                grep "title=\" Download Java software for Linux x64\" href" | \
                grep -v RPM | uniq | awk -F"href=\"" '{print $2}' | \
                awk -F"\" onclick" '{print $1}')
-    logger DEBUG "Download ${ARCH}bit Version of Java."
+    logger DEBUG "Download \"${ARCH}bit\" version of Java's JRE."
   elif [ ${ARCH} -eq 32 ] ; then
     DOWNLOAD=$(wget -qO- http://www.java.com/en/download/manual.jsp | \
                grep "title=\" Download Java software for Linux\" href" | \
                grep -v RPM | uniq | awk -F"href=\"" '{print $2}' | \
                awk -F"\" onclick" '{print $1}')
-    logger DEBUG "Download ${ARCH}bit Version of Java."
+    logger DEBUG "Download \"${ARCH}bit\" version of Java's JRE."
   fi
-  if [ -f ${TEMP}/jre-linux.tar.gz ] ; then
-    rm -f ${TEMP}/jre-linux.tar.gz
+  if [ -f ${PATH_TEMP}/jre-linux.tar.gz ] ; then
+    rm -f ${PATH_TEMP}/jre-linux.tar.gz
   fi
-  if wget ${DOWNLOAD} -O ${TEMP}/jre-linux.tar.gz &> /dev/null ; then
-    logger DEBUG "Successfully download Java JRE \"${TEMP}/jre-linux.tar.gz\"."
+  if wget ${DOWNLOAD} -O ${PATH_TEMP}/jre-linux.tar.gz &> /dev/null ; then
+    logger DEBUG "Successfully download Java JRE \"${PATH_TEMP}/jre-linux.tar.gz\"."
   else
     logger ERROR "Can't download Java JRE from \"${DOWNLOAD}\"."
+    exit 1
   fi
-  JAVA_VERSION=$(gunzip -c ${TEMP}/jre-linux.tar.gz | tar t | head -1 | cut -d"/" -f1)
+  JAVA_VERSION=$(gunzip -c ${PATH_TEMP}/jre-linux.tar.gz | tar t | head -1 | cut -d"/" -f1)
   if [ ! -d ${PATH_DEST}/java/${JAVA_VERSION} ] ; then
-    logger DEBUG "Java JRE ${JAVA_VERSION} does not exits at the destination folder \"${PATH_DEST}/java\"."
-    if tar -xzf ${TEMP}/jre-linux.tar.gz -C "${PATH_DEST}/java" &> /dev/null ; then
-      logger DEBUG "Successfully extract \"${TEMP}/jre-linux.tar.gz\"."
+    logger DEBUG "Java JRE \"${JAVA_VERSION}\" does not exits at the destination folder \"${PATH_DEST}/java\"."
+    if tar -xzf ${PATH_TEMP}/jre-linux.tar.gz -C "${PATH_DEST}/java" &> /dev/null ; then
+      logger DEBUG "Successfully extract \"${PATH_TEMP}/jre-linux.tar.gz\"."
     else
-      logger ERROR "Can't extract \"${TEMP}/jre-linux.tar.gz\" it sems to be corrupt, script will exit."
+      logger ERROR "Can't extract \"${PATH_TEMP}/jre-linux.tar.gz\" it sems to be corrupt, script will exit."
       exit 1
     fi
     if ln -fs ${PATH_DEST}/java/${JAVA_VERSION} ${PATH_DEST}/java/current &> /dev/null ; then
@@ -713,12 +745,13 @@ function deployLatestJava() {
     fi
   else
     logger ERROR "Can't find \"${PATH_DEST}/java/current\"."
+    exit 1
   fi
-  if rm -f ${TEMP}/jre-linux.tar.gz &> /dev/null ; then
-    logger DEBUG "Successfully removed \"${TEMP}/jre-linux.tar.gz\" archive."
+  if rm -f ${PATH_TEMP}/jre-linux.tar.gz &> /dev/null ; then
+    logger DEBUG "Successfully removed \"${PATH_TEMP}/jre-linux.tar.gz\" archive."
   fi
 }
-
+ 
 function deployLatestBin() {
   BIN_URL=$(wget -qO- https://my.atlassian.com/download/feeds/current/${1}.json | \
             grep -Po '"zipUrl":.*?[^\\]",'  | \
@@ -734,50 +767,70 @@ function deployLatestBin() {
     logger ERROR "Can't get version from \"https://my.atlassian.com/download/feeds/current/${1}.json\", script will exit."
     exit 1
   fi
-  if [ ! -f ${TEMP}/${FILE_NAME} ] ; then
-    logger DEBUG "Binary of ${1} does not exists in \"${TEMP}/${FILE_NAME}\", so start download."
-    if wget ${BIN_URL} -P ${TEMP} &> /dev/null ; then
+  if [ ! -f ${PATH_TEMP}/${FILE_NAME} ] ; then
+    logger DEBUG "Binary of ${1} does not exists in \"${PATH_TEMP}/${FILE_NAME}\", so start download."
+    if wget ${BIN_URL} -P ${PATH_TEMP} &> /dev/null ; then
       logger DEBUG "Successfully downloaded \"${BIN_URL}\"."
     else
       logger ERROR "Can't downloaded \"${BIN_URL}\", script will exit."
+      exit 1
     fi
   fi
-  CHECK_VERSION=$(find ${PATH_DEST}/${1}/ -name ${FOLDER_NAME}\*) 
+  CHECK_VERSION=$(find ${PATH_DEST}/${1}/ -name ${FOLDER_NAME}\*)
   if [ "x${CHECK_VERSION}" == "x" ] ; then 
     logger DEBUG "Version \"${FOLDER_NAME}\" does not exists, so continue."
-    if [ -f ${TEMP}/${FILE_NAME} ] ; then
-      if tar -xzvf ${TEMP}/${FILE_NAME} -C ${PATH_DEST}/${1} &> /dev/null ; then
-        logger DEBUG "Successfully uncompress \"${TEMP}/${FILE_NAME}\" to \"${PATH_DEST}/${1}\"."
+    if [ -f ${PATH_TEMP}/${FILE_NAME} ] ; then
+      if tar -xzvf ${PATH_TEMP}/${FILE_NAME} -C ${PATH_DEST}/${1} &> /dev/null ; then
+        logger DEBUG "Successfully uncompress \"${PATH_TEMP}/${FILE_NAME}\" to \"${PATH_DEST}/${1}\"."
       else
-        logger ERROR "Can't uncompress \"${TEMP}/${FILE_NAME}\" to \"${PATH_DEST}/${1}\"."
+        logger ERROR "Can't uncompress \"${PATH_TEMP}/${FILE_NAME}\" to \"${PATH_DEST}/${1}\"."
+        exit 1
       fi
     fi
     if [ ${1} == "jira" ] ; then
-      ln -fs "${PATH_DEST}/${1}/${FOLDER_NAME}-standalone" ${PATH_DEST}/${1}/current
+      APP_PATH="${PATH_DEST}/${1}/${FOLDER_NAME}-standalone"
     else
-      ln -fs ${PATH_DEST}/${1}/${FOLDER_NAME} ${PATH_DEST}/${1}/current
+      APP_PATH="${PATH_DEST}/${1}/${FOLDER_NAME}"
     fi
-    if [ $? -eq 0 ]; then
+    if [ -L ${PATH_DEST}/${1}/current ]; then
+      if unlink ${PATH_DEST}/${1}/current ; then
+        logger DEBUG "Successfully unlink \"${PATH_DEST}/${1}/current\"."
+      else
+        logger ERROR "Can't unlink \"${PATH_DEST}/${1}/current\"."
+        exit 1
+      fi
+    fi
+    if ln -s ${APP_PATH} ${PATH_DEST}/${1}/current ; then
       logger DEBUG "Successfully set softlink to \"${PATH_DEST}/${1}/current\"."
     else
       logger ERROR "Can't set softlink to \"${PATH_DEST}/${1}/current\"."
+      exit 1
     fi
     if [ -L ${PATH_DEST}/${1}/current ]; then
       if chown -R ${1}:${1} "${PATH_DEST}/${1}/current/"; then
         logger DEBUG "Successfully chownd \"${PATH_DEST}/${1}/current\"."
       else
         logger ERROR "Can't chown \"${PATH_DEST}/${1}/current\"."
+        exit 1
       fi
     else
       logger ERROR "Can't find \"${PATH_DEST}/${1}/current\"."
+      exit 1
     fi
   else
     logger WARN "Version \"${FOLDER_NAME}\" does already exists, so do nothing."
   fi
+  for BIN_FOLDERS in $(ls ${PATH_DEST}/${1} | grep -v -e backup -e current -e data | head -n-${MAX_BINS}) ; do
+    if rm -rf ${PATH_DEST}/${1}/${BIN_FOLDERS} &> /dev/null ; then
+      logger DEBUG "Successfully deleted old binary deployments \"${BIN_FOLDERS}\"."
+    else
+      logger DEBUG "Can't deleted old binary deployments \"${BIN_FOLDERS}\"."
+    fi
+  done
 }
 
 function configTomcatProxy() {
-  TOMCAT_CONFIG=$(find ${PATH_DEST}/${1} -name server.xml)
+  TOMCAT_CONFIG=$(find ${PATH_DEST}/${1}/current/ -name server.xml)
   if [ ${ALT_NAMES} -eq 1 ] ; then
     if [ ${1} == "jira" ]; then
         APP_NAME="projects"
@@ -795,35 +848,41 @@ function configTomcatProxy() {
     if ! grep ${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
       logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" seems not to be configured."
       if xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "" ${TOMCAT_CONFIG} &> /dev/null ; then
-    	logger DEBUG "Successfully set application context path for ${1}."
+    	logger DEBUG "Successfully set application context path for \"${1}\"."
       else
-        logger ERROR "Can't set set application context path for ${1}."
+        logger ERROR "Can't set set application context path for \"${1}\"."
+        exit 1
       fi
       if xmlstarlet ed -L -PS -u "/Server/Service/Connector/@connectionTimeout" -v "120000" ${TOMCAT_CONFIG} &> /dev/null ; then
-        logger DEBUG "Successfully set application proxy timeout for ${1}."
+        logger DEBUG "Successfully set application proxy timeout for \"${1}\"."
       else
-        logger ERROR "Can't set set application proxy timeout for ${1}."
+        logger ERROR "Can't set set application proxy timeout for \"${1}\"."
+        exit 1
       fi
       if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${APP_NAME}.${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
-        logger DEBUG "Successfully set application proxy name for ${1}."
+        logger DEBUG "Successfully set application proxy name for \"${1}\"."
       else
-        logger ERROR "Can't set set application proxy name for ${1}."
+        logger ERROR "Can't set set application proxy name for \"${1}\"."
+        exit 1
       fi
       if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyPort -v 443 ${TOMCAT_CONFIG} &> /dev/null ; then
-        logger DEBUG "Successfully set application proxy port path for ${1}."
+        logger DEBUG "Successfully set application proxy port path for \"${1}\"."
       else
-        logger ERROR "Can't set set application proxy port for ${1}."
+        logger ERROR "Can't set set application proxy port for \"${1}\"."
+        exit 1
       fi
       if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n scheme -v https ${TOMCAT_CONFIG} &> /dev/null ; then
-        logger DEBUG "Successfully set application proxy scheme for ${1}."
+        logger DEBUG "Successfully set application proxy scheme for \"${1}\"."
       else
-        logger ERROR "Can't set set application proxy scheme for ${1}."
+        logger ERROR "Can't set set application proxy scheme for \"${1}\"."
+        exit 1
       fi
       if [ ${EXT_PROXY} -ne 1 ] ; then
         if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n address -v "127.0.0.1" ${TOMCAT_CONFIG} &> /dev/null ; then
-          logger DEBUG "Successfully set application proxy scheme for ${1}."
+          logger DEBUG "Successfully set application interface address for \"${1}\"."
         else
-          logger ERROR "Can't set set application proxy scheme for ${1}."
+          logger ERROR "Can't set set application interface address for \"${1}\"."
+          exit 1
         fi
       fi
     else
@@ -835,21 +894,24 @@ function configTomcatProxy() {
 function setHomes() {
   if [ ${1} == "crowd" ]; then
     if echo "${1}.home=${PATH_DATA}" > ${PATH_DEST}/${1}/current/${1}-webapp/WEB-INF/classes/${1}-init.properties ; then
-      logger DEBUG "Successfully add home path to ${1} config."
+      logger DEBUG "Successfully add home path to \"${1}\" config."
     else
-      logger ERROR "Can't add home path to ${1} config."
+      logger ERROR "Can't add home path to \"${1}\" config."
+      exit 1
     fi
   elif [ ${1} == "confluence" ]; then
     if echo "${1}.home=${PATH_DATA}" > ${PATH_DEST}/${1}/current/${1}/WEB-INF/classes/${1}-init.properties ; then
-      logger DEBUG "Successfully add home path to ${1} config."
+      logger DEBUG "Successfully add home path to \"${1}\" config."
     else
-      logger ERROR "Can't add home path to ${1} config."
+      logger ERROR "Can't add home path to \"${1}\" config."
+      exit 1
     fi
   elif [ ${1} == "jira" ]; then
     if echo "${1}.home=${PATH_DATA}" > ${PATH_DEST}/${1}/current/atlassian-${1}/WEB-INF/classes/${1}-application.properties ; then
-      logger DEBUG "Successfully add home path to ${1} config."
+      logger DEBUG "Successfully add home path to \"${1}\" config."
     else
-      logger ERROR "Can't add home path to ${1} config."
+      logger ERROR "Can't add home path to \"${1}\" config."
+      exit 1
     fi
   fi
 }
@@ -859,33 +921,37 @@ function serverMemorycalc() {
     if sed "s/JVM_MAXIMUM_MEMORY=\"[0-9]*m\"/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
        sed "s/JVM_MINIMUM_MEMORY=\"[0-9]*m\"/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
        sed "s/JIRA_MAX_PERM_SIZE=[0-9]*m/JIRA_MAX_PERM_SIZE=\"${APP_MEM_PERM}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
-      logger DEBUG "Successfully changed momory setting of ${1}."
+      logger DEBUG "Successfully changed memory setting of \"${1}\"."
     else
-      logger ERROR "Can't change momory setting of ${1}."
+      logger ERROR "Can't change memory setting of \"${1}\"."
+      exit 1
     fi
   elif [ ${1} == "stash" ]; then
     if sed "s/JVM_MAXIMUM_MEMORY=\"[0-9]*m\"/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
        sed "s/JVM_MINIMUM_MEMORY=\"[0-9]*m\"/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
        sed "s/STASH_MAX_PERM_SIZE=[0-9]*m/STASH_MAX_PERM_SIZE=\"${APP_MEM_PERM}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
-      logger DEBUG "Successfully changed momory setting of ${1}."
+      logger DEBUG "Successfully changed memory setting of \"${1}\"."
     else
-      logger ERROR "Can't change momory setting of ${1}."
+      logger ERROR "Can't change memory setting of \"${1}\"."
+      exit 1
     fi
   elif [ ${1} == "crowd" ]; then
     if sed "s/Xms[0-9]*m/Xms${APP_MEM_HEAP}m/g" -i ${PATH_DEST}/${1}/current/apache-tomcat/bin/setenv.sh && \
        sed "s/Xmx[0-9]*m/Xmx${APP_MEM_HEAP}m/g" -i ${PATH_DEST}/${1}/current/apache-tomcat/bin/setenv.sh && \
        sed "s/MaxPermSize=[0-9]*m/MaxPermSize=${APP_MEM_PERM}m/g" -i ${PATH_DEST}/${1}/current/apache-tomcat/bin/setenv.sh ; then
-      logger DEBUG "Successfully changed momory setting of ${1}."
+      logger DEBUG "Successfully changed memory setting of \"${1}\"."
     else
-      logger ERROR "Can't change momory setting of ${1}."
+      logger ERROR "Can't change memory setting of \"${1}\"."
+      exit 1
     fi
   elif [ ${1} == "confluence" ]; then
     if sed "s/Xms[0-9]*m/Xms${APP_MEM_HEAP}m/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
        sed "s/Xmx[0-9]*m/Xmx${APP_MEM_HEAP}m/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
        sed "s/MaxPermSize=[0-9]*m/MaxPermSize=${APP_MEM_PERM}m/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh; then
-      logger DEBUG "Successfully changed momory setting of ${1}."
+      logger DEBUG "Successfully changed memory setting of \"${1}\"."
     else
-      logger ERROR "Can't change momory setting of ${1}."
+      logger ERROR "Can't change memory setting of \"${1}\"."
+      exit 1
     fi
   fi
 }
@@ -929,9 +995,10 @@ echo ""
 echo "Server startup logs are located in $LOGBASEABS/logs/catalina.out"
 EOF
         if [ $? -eq 0 ]; then
-          logger DEBUG "Successfully run fixes on ${1}."
+          logger DEBUG "Successfully run fixes on \"${1}\"."
         else
-          logger ERROR "Can't run fixes on ${1}."
+          logger ERROR "Can't run fixes on \"${1}\"."
+          exit 1
         fi
       fi
     fi
@@ -945,7 +1012,8 @@ function backupDatabase() {
       logger DEBUG "found application config ${APP_CONFIG}"
       MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
     else
-      logger ERROR "can't find database configuration file for ${1}"
+      logger ERROR "Can't find database configuration file for \"${1}\"."
+      exit 1
     fi
   elif [ ${1} == "stash" ]; then
     APP_CONFIG=$(find ${PATH_DATA}/ -name stash-config.properties)
@@ -953,30 +1021,35 @@ function backupDatabase() {
       logger DEBUG "found application config ${APP_CONFIG}"
       MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d"=" -f2)
     else
-      logger ERROR "can't grep database password for ${1}"
+      logger ERROR "Can't grep database password for \"${1}\"."
+      exit 1
     fi
   else
     APP_CONFIG=$(find ${PATH_DATA}/ -name ${1}.cfg.xml)
     if [ ! "x${APP_CONFIG}" == "x" ] ; then
-      logger DEBUG "found application config ${APP_CONFIG}"
+      logger DEBUG "Found application config \"${APP_CONFIG}\"."
       MYSQL_PASSWORD=$(grep hibernate.connection.password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
     else
-      logger ERROR "can't grep database credentials from ${1} config"
+      logger ERROR "Can't grep database credentials from \"${1}\" config."
+      exit 1
     fi
   fi
   if [ ! "x${MYSQL_PASSWORD}" == "x" ] ; then
     if mysqldump -u${1} -p${MYSQL_PASSWORD} ${1} --add-drop-database > ${PATH_DATA}/${1}_database_backup.sql ; then
-      logger INFO "succesfully dumped ${1} to ${PATH_DATA}/${1}_database_backup.sql"
+      logger INFO "Successfully dumped \"${1}\" to \"${PATH_DATA}/${1}_database_backup.sql\"."
     else
-      logger ERROR "cant dump ${1} database backup"
+      logger ERROR "Can't dump \"${1}\" database backup."
+      exit 1
     fi
     if chown ${1}:${1} ${PATH_DATA}/${1}_database_backup.sql &> /dev/null ; then
-      logger DEBUG "succesfully owned database dump from ${1}"
+      logger DEBUG "Successfully owned database dump from ${1}"
     else
-      logger ERROR "can't own database dump from ${1}"
+      logger ERROR "Can't own database dump from \"${1}\"."
+      exit 1
     fi
   else
-    logger ERROR "can't grep database credentials from ${1} config"
+    logger ERROR "Can't grep database credentials from \"${1}\" config."
+    exit 1
   fi
   unset MYSQL_PASSWORD
 }
@@ -984,16 +1057,17 @@ function backupDatabase() {
 function backupHome() {
   if [ -d "${PATH_DEST}/${1}" ] && [ -d ${PATH_BACKUP} ] ; then
     if tar -czf ${PATH_BACKUP}/${1}_backup_${TIMESTAMP}.tgz --exclude="${PATH_BACKUP}" ${PATH_DEST}/${1} &> /dev/null ; then
-      logger INFO "succesfully backup ${1} home folder"
+      logger INFO "Successfully backup \"${1}\" home folder."
     else
-      logger ERROR "can't backup ${1} home folder"
+      logger ERROR "Can't backup \"${1}\" home folder."
+      exit 1
     fi
-    if rm -f ${PATH_DATA}}/${1}_database_backup.sql &> /dev/null ; then
-      logger DEBUG "delete old ${1} database dump"
+    if rm -f ${PATH_DATA}/${1}_database_backup.sql &> /dev/null ; then
+      logger DEBUG "Delete old \"${1}\" database dump."
     fi
-    for FILE in $(ls ${PATH_BACKUP}/${1}_backup_*.tgz | head -n-${MAXBACKUPS}) ; do
+    for FILE in $(ls ${PATH_BACKUP}/${1}_backup_*.tgz | head -n-${MAX_BACKUPS}) ; do
       if rm -f ${FILE} &> /dev/null ; then
-        logger DEBUG "deleted old backup file ${FILE}"
+        logger DEBUG "Deleted old backup file \"${FILE}\"."
       fi
     done
   fi
@@ -1040,21 +1114,24 @@ esac
 exit 0
 EOF
       if [ $? -eq 0 ]; then
-        logger DEBUG "successfully created init script for ${1}"
+        logger DEBUG "Successfully created init script for \"${1}\"."
       else
-        logger ERROR "can't created init script for ${1}"
+        logger ERROR "Can't created init script for \"${1}\"."
+        exit 1
       fi
       if chmod +x /etc/init.d/${1} &> /dev/null ; then
-        logger DEBUG "successfully make init script for ${1} executeble"
+        logger DEBUG "Successfully make init script for \"${1}\" executeble."
       else
-        logger ERROR "can't make init script for ${1} executeble"
+        logger ERROR "Can't make init script for \"${1}\" executeble."
+        exit 1
       fi
     fi
     if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
       if update-rc.d ${1} defaults &> /dev/null ; then
-        logger DEBUG "successfully enabled ${1} for startup"
+        logger DEBUG "Successfully enabled \"${1}\" for automatic startup."
       else
-        logger ERROR "can't enabled ${1} for startup"
+        logger ERROR "Can't enabled \"${1}\" for automatic startup."
+        exit 1
       fi
     elif [ ${DISTRO} == "redhat" ] ; then
       chkconfig --add ${1} >/dev/null 2>&1
@@ -1065,9 +1142,10 @@ EOF
 function purgeInitScript() {
   if [ -f /etc/init.d/${1} ] ; then
     if rm -f /etc/init.d/${1} &> /dev/null ; then
-      logger DEBUG "successfully delete ${1} init script"
+      logger DEBUG "Successfully delete \"${1}\" init script."
     else
-      logger ERROR "successfully delete ${1} init script"
+      logger ERROR "Successfully delete \"${1}\" init script."
+      exit 1
     fi
   fi
 }
@@ -1077,18 +1155,18 @@ function restoreLatestData() {
   if tar -tzf ${BACKUPLATEST} &> /dev/null ; then
     logger DEBUG "Last backup ${BACKUPLATEST} is validated to restore."
     if find ${PATH_DEST}/${1}/* -maxdepth 0 | grep -v ${PATH_BACKUP} | xargs rm -rf &> /dev/null ; then
-      logger DEBUG "Successfully removed ${1} files for the restore."
+      logger DEBUG "Successfully removed \"${1}\" files for the restore."
       if tar -xzf ${BACKUPLATEST} -C / &> /dev/null ; then
-        logger INFO "Successfully restored ${1} last backup files."
+        logger INFO "Successfully restored \"${1}\" last backup files."
       else
-        logger ERROR "Can't restored ${1} last backup files."
+        logger ERROR "Can't restored \"${1}\" last backup files."
       fi
     else
-      logger ERROR "Can't removed ${1} files for the restore."
+      logger ERROR "Can't removed \"${1}\" files for the restore."
       exit 1
     fi
   else
-    logger ERROR "last backup ${BACKUPLATEST} is not validated, script will exit now."
+    logger ERROR "Last backup \"${BACKUPLATEST}\" is not validated, script will exit now!"
     exit 1
   fi
 }
@@ -1097,36 +1175,38 @@ function restoreDatabase() {
   if [ ${1} == "jira" ]; then
     APP_CONFIG=$(find ${PATH_DATA}/ -name dbconfig.xml)
     if [ ! "x${APP_CONFIG}" == "x" ] ; then
-      logger DEBUG "found application config ${APP_CONFIG}"
+      logger DEBUG "Found application config \"${APP_CONFIG}\"."
       MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
     else
-      logger ERROR "can't find database configuration file for ${1}"
+      logger ERROR "Can't find database configuration file for \"${1}\"."
+      exit 1
     fi
   elif [ ${1} == "stash" ]; then
     APP_CONFIG=$(find ${PATH_DATA}/ -name stash-config.properties)
     if [ ! "x${APP_CONFIG}" == "x" ] ; then
-      logger DEBUG "found application config ${APP_CONFIG}"
+      logger DEBUG "Found application config \"${APP_CONFIG}\"."
       MYSQL_PASSWORD=$(grep password ${APP_CONFIG} | cut -d"=" -f2)
     else
-      logger ERROR "can't grep database password for ${1}"
+      logger ERROR "Can't grep database password for \"${1}\"."
+      exit 1
     fi
   else
     APP_CONFIG=$(find ${PATH_DATA}/ -name ${1}.cfg.xml)
     if [ ! "x${APP_CONFIG}" == "x" ] ; then
-      logger DEBUG "found application config ${APP_CONFIG}"
+      logger DEBUG "Found application config \"${APP_CONFIG}\"."
       MYSQL_PASSWORD=$(grep hibernate.connection.password ${APP_CONFIG} | cut -d">" -f2 | cut -d"<" -f1)
     else
-      logger ERROR "can't grep database credentials from ${1} config"
+      logger ERROR "Can't grep database credentials from \"${1}\" config."
     fi
   fi
   if [ ! "x${MYSQL_PASSWORD}" == "x" ] ; then
     if mysql -u${1} -p${MYSQL_PASSWORD} ${1} < ${PATH_DATA}/${1}_database_backup.sql ; then
-      logger INFO "succesfully restore ${1} dump ${PATH_DATA}/${1}_database_backup.sql"
+      logger INFO "Successfully restore \"${1}\" dump \"${PATH_DATA}/${1}_database_backup.sql\"."
     else
-      logger ERROR "can't restore ${1} dump ${PATH_DATA}/${1}_database_backup.sql"
+      logger ERROR "Can't restore \"${1}\" dump \"${PATH_DATA}/${1}_database_backup.sql\"."
     fi
   else
-    logger ERROR "can't grep database credentials from ${1} config"
+    logger ERROR "Can't grep database credentials from \"${1}\" config."
   fi
   unset MYSQL_PASSWORD
 }
@@ -1136,7 +1216,6 @@ function restoreDatabase() {
 #-----------------------------------------------------------------------------------------------------
 if [ ${JOB_UPDATE} -eq 1 ] ; then
   checkFilesystem
-  checkNetwork
   deployLatestJava
   for APP in ${APPS}; do
     PATH_DATA="${PATH_DEST}/${APP}/data"
@@ -1149,7 +1228,7 @@ if [ ${JOB_UPDATE} -eq 1 ] ; then
     serverMemorycalc ${APP}
     setFixes ${APP}
     startApp ${APP}
-    logger INFO "Succasfully updated ${APP}."
+    logger INFO "Successfully updated \"${APP}\"."
   done
 fi
 
@@ -1180,7 +1259,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     setFixes ${APP}
     startApp ${APP}
     createVhost ${APP}
-    logger INFO "Succasfully installed ${APP}."
+    logger INFO "Successfully installed \"${APP}\"."
   done
   logger INFO "Successfully finished $(basename $0).\n"
 fi 
@@ -1194,7 +1273,7 @@ if [ ${JOB_BACKUP} -eq 1 ] ; then
     backupDatabase ${APP}
     backupHome ${APP}
     startApp ${APP}
-    logger INFO "Succasfully backup ${APP}."
+    logger INFO "Successfully backup \"${APP}\"."
   done
 fi
 
@@ -1207,7 +1286,7 @@ if [ ${JOB_RESTORE} -eq 1 ] ; then
     restoreLatestData ${APP}
     restoreDatabase ${APP}
     startApp ${APP}
-    logger INFO "Succasfully restore ${APP}."
+    logger INFO "Successfully restore \"${APP}\"."
   done
 fi
 
@@ -1221,7 +1300,7 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
     if [ ${EXT_PROXY} -ne 1 ] ; then
       purgeVhost ${APP}
     fi
-    logger INFO "Succasfully purged ${APP}."
+    logger INFO "Successfully purged \"${APP}\"."
   done
 fi
 
