@@ -12,7 +12,7 @@
 #-----------------------------------------------------------------------------------------------------
 # DevOpts:
 #-----------------------------------------------------------------------------------------------------
-# alias purge="sudo ./astack4atlassian purge && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
+# alias purge="sudo ./astack4atlassian purge --debug && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
 
 #-----------------------------------------------------------------------------------------------------
 # configuration
@@ -261,24 +261,24 @@ function installApache() {
         exit 1
       fi
     else
-      logger DEBUG "Apache Web-server is alredy installed."
+      logger DEBUG "Apache web server is alredy installed."
     fi
     if a2enmod proxy proxy_http ssl rewrite &> /dev/null ; then
-      logger DEBUG "Successfully loaded Apache Web-Server modules."
+      logger DEBUG "Successfully loaded Apache web server modules."
     else
-      logger ERROR "Can't load Apache Web-Server modules, please have a look to the Apache logfiles."
+      logger ERROR "Can't load Apache web server modules, please have a look to the Apache logfiles."
       exit 1
     fi
     if ! grep "NameVirtualHost \*:443" /etc/apache2/ports.conf | grep -v "#" &> /dev/null ; then
       echo "NameVirtualHost *:443" >> /etc/apache2/ports.conf
-      logger DEBUG "Successfully added \"NameVirtualHost *:443\" to Apache Web-Server config."
+      logger DEBUG "Successfully added \"NameVirtualHost *:443\" to Apache web server config."
     else
-      logger DEBUG "\"NameVirtualHost *:443\" is already in Apache Web-Server config."
+      logger DEBUG "\"NameVirtualHost *:443\" is already in Apache web server config."
     fi
     if service apache2 restart &> /dev/null ; then
-      logger DEBUG "Successfully restarted Apache Web-Server."
+      logger DEBUG "Successfully restarted Apache web server."
     else
-      logger ERROR "Can't restarted Apache Web-Server, please have a look to the Apache logfiles."
+      logger ERROR "Can't restarted Apache web server, please have a look to the Apache logfiles."
       exit 1
     fi
   fi
@@ -311,13 +311,13 @@ function installPostfix() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
     if ! dpkg -s postfix &> /dev/null ; then
       if DEBIAN_FRONTEND=noninteractive apt-get install -y postfix &> /dev/null ; then
-        logger DEBUG "Successfully installed Postfix Mail-Server."
+        logger DEBUG "Successfully installed Postfix mailserver."
       else
-        logger ERROR "Can't install Postfix Mail-Server, pleae check logfiles."
+        logger ERROR "Can't install Postfix mailserver, pleae check logfiles."
         exit 1
       fi
     else
-      logger DEBUG "Postfix Mail-Server is alredy installed."
+      logger DEBUG "Postfix mailserver is alredy installed."
     fi
   fi
 }
@@ -364,9 +364,9 @@ function deployDriverJDBC() {
 function createDatabase() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ]; then
     if dpkg -s mysql-server &> /dev/null ; then
-      logger DEBUG "Database-Server instance is already running."
+      logger DEBUG "MySQL database server is already running."
       if [ ! -n "${MYSQL_PASS}" ]; then
-        logger DEBUG "Database-Server root-password variable is not set so ask for the password."
+        logger DEBUG "MySQL database server root password variable is not set so ask for the password."
         unset MYSQL_PASS
         PROMPT="Please enter MySQL root password: "
         while IFS= read -p "${PROMPT}" -r -s -n 1 CHAR ; do
@@ -379,12 +379,12 @@ function createDatabase() {
         echo
         export MYSQL_PASS=${MYSQL_PASS}
       else
-        logger DEBUG "Database-Server root-password variable is set, so no need to ask for the password."
+        logger DEBUG "MySQL database server root password variable is set, so no need to ask for the password."
       fi
     fi
   fi 
   if ! mysql -u root -p${MYSQL_PASS} -Bse "USE '${1}'" &> /dev/null ; then
-    logger DEBUG "MySQL Database \"${1}\" does not exists, so create it!"
+    logger DEBUG "MySQL database \"${1}\" does not exists, so create it!"
     PASSWORD=$(openssl rand -base64 18)
     SQL_CREATE="CREATE DATABASE IF NOT EXISTS ${1} CHARACTER SET utf8 COLLATE utf8_bin;"
     SQL_GRANT="GRANT ALL ON *.* TO '${1}'@'localhost' IDENTIFIED BY '${PASSWORD}';"
@@ -393,7 +393,7 @@ function createDatabase() {
       logger INFO "Successfully created database \"${1}\" with password \"${PASSWORD}\"."
     fi
   else
-    logger INFO "Can't create Database \"${1}\", maybe it alredy exists!"
+    logger INFO "Can't create database \"${1}\", maybe it alredy exists!"
   fi
 }
 
@@ -427,9 +427,9 @@ function createCerts() {
                                                 -storepass changeit -noprompt \
                                                 -alias "${DOMAIN}" \
                                                 -file ${SSL_FOLDER}/${DOMAIN}.pem &> /dev/null ; then
-        logger DEBUG "Successfully imported the Wildcard SSL Certificate in to Java keystore."
+        logger DEBUG "Successfully imported the wildcard SSL certificate in to Java keystore."
       else
-        logger ERROR "Can't import the Wildcard SSL Certificate in to Java keystore."
+        logger ERROR "Can't import the wildcard SSL certificate in to Java keystore."
         exit 1
       fi 
     else
@@ -540,9 +540,9 @@ EOF
         exit 1
       fi
       if service apache2 reload &> /dev/null ; then
-        logger DEBUG "Successfully reload Apache vhost config."
+        logger DEBUG "Successfully reload Apache web server for the new config."
       else 
-        logger ERROR "Can't reload Apache vhost config."
+        logger ERROR "Can't reload Apache web server for the new config."
         exit 1
       fi
     fi
@@ -558,26 +558,26 @@ function purgeVhost() {
     VHOST_FILE="/etc/httpd/conf.d/${1}"
   fi 
   if [ -f ${VHOST_FILE} ]; then
-    logger DEBUG "Found apache vhost config \"${VHOST_FILE}\"."
+    logger DEBUG "Found Apache vhost config \"${VHOST_FILE}\"."
     if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
       if a2dissite ${1} &> /dev/null ; then
-        logger DEBUG "Successfully disable apache vhost config for \"${1}\"."
+        logger DEBUG "Successfully disable Apache vhost config for \"${1}\"."
         if rm -f /etc/apache2/sites-available/${1} &> /dev/null ; then
-          logger DEBUG "Successfully removed apache vhost config for \"${1}\"."
+          logger DEBUG "Successfully removed Apache vhost config for \"${1}\"."
         fi
         if service apache2 reload &> /dev/null ; then
-          logger DEBUG "Successfully reload apache vhost config."
+          logger DEBUG "Successfully reload Apache vhost config."
         else 
-          logger ERROR "Can't reload apache vhost config."
+          logger ERROR "Can't reload Apache vhost config."
           exit 1
         fi
       else
-        logger ERROR "Can't disable apache vhost config for \"${1}\"."
+        logger ERROR "Can't disable Apache vhost config for \"${1}\"."
         exit 1
       fi
     fi
   else
-    logger DEBUG "Not found apache vhost config \"${VHOST_FILE}\", so nothing to disable."
+    logger DEBUG "Not found Apache vhost config \"${VHOST_FILE}\", so nothing to disable."
   fi 
 }
 
@@ -608,11 +608,6 @@ function purgeFolders() {
   if [ -d ${PATH_DEST}/${1} ] ; then
     if rm -rf ${PATH_DEST}/${1} &> /dev/null ; then
       logger DEBUG "Successfully removed folder \"${PATH_DEST}/${1}\"."
-    fi
-  fi
-  if [ -d ${PATH_DATA} ] ; then
-    if rm -rf ${PATH_DATA} &> /dev/null ; then
-      logger DEBUG "Successfully removed folder \"${PATH_DATA}\"."
     fi
   fi
 }
@@ -654,7 +649,7 @@ function setEnvirement() {
 function purgeCredentials() {
   if id -u ${1} &> /dev/null ; then
     if userdel -f ${1} &> /dev/null ; then
-      logger DEBUG "Sucessfuly deleted user \"${1}\"."
+      logger DEBUG "Successfully deleted user \"${1}\"."
     fi
   fi
 }
@@ -662,30 +657,30 @@ function purgeCredentials() {
 function purgeJava() {
   if [ -d "${PATH_DEST}/java" ] ; then
     if rm -rf "${PATH_DEST}/java" ; then 
-      logger DEBUG "Sucessfuly deleted \"${PATH_DEST}/java\" folder."
+      logger DEBUG "Successfully deleted \"${PATH_DEST}/java\" folder."
     fi
   fi
 }
 
 function stopApp() {
-  PID=$(ps -ef | grep -e java -e ${1} | grep -v -e "grep" -e "$(basename $0)" | awk '{print $2}')
+  PID=$(ps -ef | grep ${1} | grep -v -e "grep" -e "$(basename $0)" | awk '{print $2}')
   if [ ! "x${PID}" == "x" ] ; then
-    logger DEBUG "the ${1} applications pid is \"${PID}\"."
+    logger DEBUG "Application \"${1}\" pid is \"${PID}\"."
     while ps ef ${PID} &> /dev/null ; do
       kill ${PID} &> /dev/null
       sleep 2
     done
-    logger INFO "Successfully stop application \"${1}\" with pid \"${PID}\"."
+    logger INFO "Successfully stopped application \"${1}\" with pid \"${PID}\"."
   fi
 }
 
 function startApp() {
   PID=$(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}')
   if [ "x${PID}" == "x" ] ; then
-    logger DEBUG "The \"${1}\" applications is not running, so start it."
+    logger DEBUG "Application \"${1}\" is not running, so start it."
     SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name startup.sh)
     if su ${1} -l -c "${SCRIPT_START} &> /dev/null" ; then
-      logger INFO "Successfully start application \"${1}\"."
+      logger INFO "Successfully started application \"${1}\"."
     else 
       logger ERROR "Can't start application \"${1}\"."
       exit 1
@@ -846,7 +841,7 @@ function configTomcatProxy() {
   fi
   if [ -f ${TOMCAT_CONFIG} ] ; then 
     if ! grep ${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
-      logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" seems not to be configured."
+      logger DEBUG "Tomcat's config \"${TOMCAT_CONFIG}\" seems not to be configured."
       if xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "" ${TOMCAT_CONFIG} &> /dev/null ; then
     	logger DEBUG "Successfully set application context path for \"${1}\"."
       else
