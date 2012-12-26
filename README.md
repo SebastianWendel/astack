@@ -1,20 +1,20 @@
 # Description #
 
-Atlassian is the industrie leader for Software development and collaboration tools for teams, from startup to enterprise. And as Web applications become more critical to business functions we need to enshure that this infrastucture is configured propperly and not leave any bugs what are already fixed. So keep it to up to date and do it always the same way so your infrastucture stayes consistance.
+Atlassian is the industry leader for Software development and collaboration tools for teams, from startup to enterprise. And as Web applications become more critical to business functions we need to ensure that this infrastructure is configured properly and not leave any bugs what are already fixed. So keep it to up to date and do it always the same way so you're infrastructure stays consistent.
 
-This Project astack4atlassian is a simple bash script to secure deploying and updating Atlassians developer applications in less than five minutes.
+This Project astack4atlassian is a script to secure deploying and updating Atlassians developer applications in less than five minutes.
 
-For more Information to Atlassians Produrcts please visit http://www.atlassian.com .
+For more Information to Atlassians Produrcts please visit: http://www.atlassian.com
 
 # Features #
 
 ## Dependencies ##
-By default the following system packages will be manadget:
+By default the following system packages will be managed:
 * Apache Webserver
 * Postfix Mail Server
 * MySQL Database Server
 
-The script install and update the runtime envirement:
+The script install and update the runtime environment:
 * Oracle Java JVM > 1.7
 
 The script install and update the database driver:
@@ -26,25 +26,25 @@ The script install and update the database driver:
 * **Stash** is a Git management to create and manage repositories fast and enterprise-grade.
 * **Crowd** is a single sign-on and user identity tool that's easy to use, administer, and integrate.
 
-All applications will be deployed as a standalone installation bundeld with tomcat as the application server.
+All applications will be deployed as a standalone installation bundled with tomcat as the application server.
 
 ## Procedures ##
 
-* **install** applications with the latest stable reslease
-* **update** existing applications to the latest stable reslease
+* **install** applications with the latest stable release
+* **update** existing applications to the latest stable release
 * **backup** existing mysql database, the home folder and the actual binary folder
 * **restore** latest mysql database, the home folder and the binary folder
-* **purge** the hole application stack, so be carefull
+* **purge** the hole application stack, so be careful
 
 # Requirements #
 
 ## Platform ##
-As the script runs with Bash its limited to Linux/Unix Style-Systems only.
+As the script runs with Bash it's limited to Linux/Unix Style-Systems only.
 
-The Script is build for the following Plattforms:
+The Script is build for the following Platforms:
 * Debian, Ubuntu
 
-Support for the following Plattforms is comming soon:
+Support for the following Platforms is coming soon:
 * Red Hat, CentOS, Oracle
 
 The Script is tested on the following Versions:
@@ -53,30 +53,30 @@ The Script is tested on the following Versions:
 * 32 and 64 bit
 
 ## Systems ##
-There are multiple ways to costumize or scale your setup:
+There are multiple ways to customize or scale your setup:
 
 ### single Node Setup ###
 * all specified Applications will be installed on the same System
 * MySQL Server including all Databases will be on the same System
 * Apache Webserver as Reverse-Proxy on the same System
 
-If you expect not that much requests thats your way to go.
+If you expect not that much requests that's your way to go.
 
 ### multi Node Setup ###
-* run the script on each Node where you whant to install the specified apllication
+* run the script on each Node where you wantto install the specified application
 * MySQL Server including the the Database for the specified application
 * Apache Webserver as Reverse-Proxy on the same System
 
 ### external Reverse-Proxy ###
-* you can run each senario with the external Proxy switch
+* you can run each scenario with the external Proxy switch
 
 ## Filesystem ##
 
-You need at least 1GB of filesystem space for each application, expect more for updates and backups. The script checks that dependencie before each execution.
+You need at least 1GB of file system space for each application, expect more for updates and backups. The script checks that dependency before each execution.
 
 ## System Memory ##
 
-You need at least 1GB of system memory for each application. The script checks that dependencie before execution and calculate the memory configuration for each application. Leave some memory out for the database server. 
+You need at least 1GB of system memory for each application. The script checks that dependency before execution and calculate the memory configuration for each application. Leave some memory out for the database server. 
 
 Be aware that for now the database server needs to tune by your self.
 
@@ -92,7 +92,7 @@ The default subdomains are the application names:
 * stash.example.com
 * crowd.example.com
 
-You can chouse alternative subdomains like the following:
+You can choose alternative subdomains like the following:
 * projects.example.com
 * wiki.example.com
 * git.example.com
@@ -101,13 +101,13 @@ You can chouse alternative subdomains like the following:
 Of course "example.com" is just an example and can be set by an option switch to change it to your needs.
 
 # Usage #
-To start using astak download, make it executable and run it:
+To start using astak, download, make it executable and run it:
 
     wget https://raw.github.com/sebwendel/astack4atlassian/master/astack4atlassian
     chmod +x astack4atlassian
     ./astack4atlassian
 
-The help output schould gave you some overview:
+The help output should give you some overview:
 
     USAGE: astack4atlassian [SUBCOMMAND] [OPTIONS] ...
     
@@ -138,20 +138,20 @@ Some Examples:
 
 ## Post Installation ##
 
-The only thing whats not automatic is the post installation process after the firts deployment.
+The only thing what's not automatic is the post installation process after the first deployment.
 
-So but after you just finished the Installation you can go directly to the Setup process:
+So but after you just finished the Installation you can go directly to the Setup process you find in the wiki:
 https://confluence.atlassian.com
 
 # Why Bash #
-Actualy Bash isn't best choise for that project, but i used Bash becourse the moste of the sysadmins out there i know understand shell scrippting better than c/c++ or python. And i hoped so to make it more easer to understand, debug and maybe suply some pathes.
+Actually Bash isn't the best choice, but i used Bash because the most of the sysadmins out there i know understand shell scripting better than c/c++ or python. And i hope so to make it more easier to understand, debug and maybe get some patches.
 
 # Future Outlook #
-After i get an impression of your needs, if anyone need this tool at all, im willing to extend some more features like the following:
-* wider plattform support
-* more Applications
-* automatic application check to validate update Procedures
-* support for different database engines like portgesql and oracle 
+After i get an impression of your needs, if anyone need this tool at all, i will extend some more features like the following:
+* wide platform support
+* more of Atlassian's Applications
+* automatic Application check to validate if update Procedures was successfully
+* support for different database engines like PostgreSQL and oracle
 
 # Limitations and Issues #
 
