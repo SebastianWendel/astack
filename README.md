@@ -155,8 +155,8 @@ After i get an impression of your needs, if anyone need this tool at all, im wil
 
 # Limitations and Issues #
 
-* Database Server only MySQL
-* Web Server only Apache
+* As Database Server only MySQL is supported
+* As Web Server only Apache is supported
 
 If you have any questions or recommendations just create a issue at the github repository.
 
