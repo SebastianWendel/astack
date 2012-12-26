@@ -333,8 +333,8 @@ function deployDriverJDBC() {
     else
       logger ERROR "Can't download \"${BIN_NAME}\", please check url \"http://dev.mysql.com/get/Downloads/Connector-J/${BIN_NAME}/from/http://cdn.mysql.com/\"."
       exit 1
-    fi
-    if tar xzf ${PATH_TEMP}/${BIN_NAME} -C ${TEMP} &> /dev/null ; then
+  fi
+    if tar xzf ${PATH_TEMP}/${BIN_NAME} -C ${PATH_TEMP} &> /dev/null ; then
       logger DEBUG "Successfully uncompress \"${BIN_NAME}\" to \"${PATH_TEMP}\"."
     else
       logger ERROR "Can't uncompress \"${BIN_NAME}\"."
