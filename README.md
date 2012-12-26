@@ -15,7 +15,7 @@ By default the following system packages will be manadget:
 * MySQL Database Server
 
 The script install and update the runtime envirement:
-* Oracle Java JRE
+* Oracle Java JVM > 1.7
 
 The script install and update the database driver:
 * MySQL JDBC Driver
@@ -56,19 +56,18 @@ The Script is tested on the following Versions:
 There are multiple ways to costumize or scale your setup:
 
 1. single Node Setup
-** all specified Applications will be installed on the same System
-** MySQL Server including all Databases will be on the same System
-** Apache Webserver as Reverse-Proxy on the same System
+* all specified Applications will be installed on the same System
+* MySQL Server including all Databases will be on the same System
+* Apache Webserver as Reverse-Proxy on the same System
 
 If you expect not that much requests thats your way to go.
 
-1. multi Node Setup
-** run the script on each Node where you whant to install the specified apllication
-** MySQL Server including the the Database for the specified application
-** Apache Webserver as Reverse-Proxy on the same System
+2. multi Node Setup
+* run the script on each Node where you whant to install the specified apllication
+* MySQL Server including the the Database for the specified application
+* Apache Webserver as Reverse-Proxy on the same System
 
 * external Reverse-Proxy
-
 You can run each senario with the external Proxy switch.
 
 ## Filesystem ##
@@ -102,12 +101,13 @@ You can chouse alternative subdomains like the following:
 Of course "example.com" is just an example and can be set by an option switch to change it to your needs.
 
 # Usage #
-
+To start using astak download, make it executable and run it:
 
     wget https://raw.github.com/sebwendel/astack4atlassian/master/astack4atlassian
     chmod +x astack4atlassian
     ./astack4atlassian
 
+The help output schould gave you some overview:
 
     USAGE: astack4atlassian [SUBCOMMAND] [OPTIONS] ...
     
@@ -128,16 +128,13 @@ Of course "example.com" is just an example and can be set by an option switch to
     --verbose:      run the script with developer output
     -h -? --help:   show that help output
 
-
 Some Examples:
-
 
     astack4atlassian install --domain example.com
     astack4atlassian install --domain example.com --alt-names --applications "confluence jira"
     astack4atlassian update --domain example.com --alt-names --ext-proxy
     astack4atlassian backup
     astack4atlassian restore
-
 
 ## Post Installation ##
 
@@ -150,7 +147,7 @@ https://confluence.atlassian.com
 Actualy Bash isn't best choise for that project, but i used Bash becourse the moste of the sysadmins out there i know understand shell scrippting better than c/c++ or python. And i hoped so to make it more easer to understand, debug and maybe suply some pathes.
 
 # Future Outlook #
-After i get an impression of your needs, if anyone need this tool at all, im willing to implement some more featurestures like the following:
+After i get an impression of your needs, if anyone need this tool at all, im willing to extend some more features like the following:
 * wider plattform support
 * more Applications
 * automatic application check to validate update Procedures
