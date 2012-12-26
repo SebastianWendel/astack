@@ -55,20 +55,20 @@ The Script is tested on the following Versions:
 ## Systems ##
 There are multiple ways to costumize or scale your setup:
 
-1. single Node Setup
+### single Node Setup ###
 * all specified Applications will be installed on the same System
 * MySQL Server including all Databases will be on the same System
 * Apache Webserver as Reverse-Proxy on the same System
 
 If you expect not that much requests thats your way to go.
 
-2. multi Node Setup
+### multi Node Setup ###
 * run the script on each Node where you whant to install the specified apllication
 * MySQL Server including the the Database for the specified application
 * Apache Webserver as Reverse-Proxy on the same System
 
-* external Reverse-Proxy
-You can run each senario with the external Proxy switch.
+### external Reverse-Proxy ###
+* you can run each senario with the external Proxy switch
 
 ## Filesystem ##
 
