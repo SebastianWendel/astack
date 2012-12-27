@@ -286,7 +286,8 @@ function installApache() {
 
 function installMySQL() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    if ! dpkg -s mysql-server &> /dev/null ; then 
+    #if ! dpkg -s mysql-server &> /dev/null ; then 
+    if ! which mysqld &> /dev/null ; then 
       apt-get update &> /dev/null
       if DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server &> /dev/null ; then
         logger DEBUG "Successfully installed MySQL-Server."
@@ -363,7 +364,8 @@ function deployDriverJDBC() {
 
 function createDatabase() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ]; then
-    if dpkg -s mysql-server &> /dev/null ; then
+    #if dpkg -s mysql-server &> /dev/null ; then
+    if which mysqld &> /dev/null ; then
       logger DEBUG "MySQL database server is already running."
       if [ ! -n "${MYSQL_PASS}" ]; then
         logger DEBUG "MySQL database server root password variable is not set so ask for the password."
