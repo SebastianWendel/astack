@@ -213,7 +213,7 @@ function logger() {
 function checkFilesystem() {
   #FILESYSTEM_SPACE=$(df ${PATH_DEST} | grep -vE '^Filesystem|tmpfs|cdrom' | awk '{print $4}')
   #if [ ${FILESYSTEM_SPACE} -lt 1024000 ] ; then
-  FILESYSTEM_SPACE=$(echo "$(df -h ${PATH_DEST} | grep G | awk -F'G' '{print $3}' | sed 's/[[:space:]]//g') * 1024 * 1024" | bc)
+  FILESYSTEM_SPACE="$(echo "$(df -h ${PATH_DEST} | grep G | awk -F'G' '{print $3}' | sed 's/[[:space:]]//g') * 1024 * 1024" | bc)"
   if [ ${FILESYSTEM_SPACE/\.*} -lt 1024000 ] ; then
     logger ERROR "There is not enough filesystem space left \"${FILESYSTEM_SPACE}kb\" you need at least \"1024000kb\", script will exit!"
     exit 1
