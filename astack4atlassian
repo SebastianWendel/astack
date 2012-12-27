@@ -725,7 +725,6 @@ function deployLatestJava() {
     logger ERROR "Can't download Java JRE from \"${DOWNLOAD}\"."
     exit 1
   fi
-  #JAVA_VERSION=$(gunzip -c ${PATH_TEMP}/jre-linux.tar.gz | tar t | head -1 | cut -d"/" -f1)
   JAVA_VERSION=$(tar -tzf ${PATH_TEMP}/jre-linux.tar.gz 2> /dev/null | head -1 | cut -d"/" -f1)
   if [ ! -d ${PATH_DEST}/java/${JAVA_VERSION} ] ; then
     logger DEBUG "Java JRE \"${JAVA_VERSION}\" does not exits at the destination folder \"${PATH_DEST}/java\"."
