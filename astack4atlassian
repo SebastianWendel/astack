@@ -234,7 +234,16 @@ function checkMemoryusage() {
 
 function installTools() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    for PKG in ${PKG_DEBIAN} ; do
+    if grep "6." /etc/debian_version ; then
+      if ! grep -R backports /etc/apt/sources* ; then
+        if echo "deb http://backports.debian.org/debian-backports squeeze-backports main" >> /etc/apt/sources.list ; then
+          logger DEBUG "Successfully add backports repository to Debian Squeeze."
+        else
+          logger ERROR "Can't add backports repository to Debian Squeeze."
+        fi
+      fi
+    fi
+     for PKG in ${PKG_DEBIAN} ; do
       if ! dpkg -s ${PKG} &> /dev/null ; then
         apt-get update &> /dev/null
         if apt-get install -y ${PKG} &> /dev/null ; then
