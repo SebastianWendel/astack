@@ -244,7 +244,7 @@ function installTools() {
       fi
     fi
      for PKG in ${PKG_DEBIAN} ; do
-      if ! dpkg -s ${PKG} &> /dev/null ; then
+      if ! which ${PKG} &> /dev/null ; then
         apt-get update &> /dev/null
         if apt-get install -y ${PKG} &> /dev/null ; then
           logger DEBUG "Successfully installed tool \"${PKG}\"."
@@ -1297,17 +1297,20 @@ if [ ${JOB_RESTORE} -eq 1 ] ; then
 fi
 
 if [ ${JOB_PURGE} -eq 1 ] ; then
-  purgeJava
-  for APP in ${APPS}; do
-    stopApp ${APP}
-    purgeCredentials ${APP}
-    purgeFolders ${APP}
-    purgeInitScript ${APP}
-    if [ ${EXT_PROXY} -ne 1 ] ; then
-      purgeVhost ${APP}
-    fi
-    logger INFO "Successfully purged \"${APP}\"."
-  done
+  read -r -p "Are you sure to purge your installation? [Y/n] " response
+  if [[ $response =~ ^([yY][eE][sS]|[yY])$ ]]; then
+    purgeJava
+    for APP in ${APPS}; do
+      stopApp ${APP}
+      purgeCredentials ${APP}
+      purgeFolders ${APP}
+      purgeInitScript ${APP}
+      if [ ${EXT_PROXY} -ne 1 ] ; then
+        purgeVhost ${APP}
+      fi
+      logger INFO "Successfully purged \"${APP}\"."
+    done
+  fi
 fi
 
 unset MYSQL_PASS
