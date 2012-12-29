@@ -234,7 +234,7 @@ function checkMemoryusage() {
 
 function installTools() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    if grep "6." /etc/debian_version ; then
+    if grep "6.*.*" /etc/debian_version ; then
       if ! grep -R backports /etc/apt/sources* ; then
         if echo "deb http://backports.debian.org/debian-backports squeeze-backports main" >> /etc/apt/sources.list ; then
           logger DEBUG "Successfully add backports repository to Debian Squeeze."
@@ -242,20 +242,34 @@ function installTools() {
           logger ERROR "Can't add backports repository to Debian Squeeze."
         fi
       fi
-    fi
-     for PKG in ${PKG_DEBIAN} ; do
-      if ! which ${PKG} &> /dev/null ; then
-        apt-get update &> /dev/null
-        if apt-get install -y ${PKG} &> /dev/null ; then
-          logger DEBUG "Successfully installed tool \"${PKG}\"."
+      for PKG in ${PKG_DEBIAN} ; do
+        if ! which ${PKG} &> /dev/null ; then
+          apt-get update &> /dev/null
+          if apt-get -t squeeze-backports -y ${PKG} &> /dev/null ; then
+            logger DEBUG "Successfully installed tool \"${PKG}\"."
+          else
+            logger ERROR "Can't install tool \"${PKG}\", please check logfiles."
+            exit 1
+          fi
         else
-          logger ERROR "Can't install tool \"${PKG}\", please check logfiles."
-          exit 1
+          logger DEBUG "Tool \"${PKG}\" is alredy installed."
         fi
-      else
-        logger DEBUG "Tool \"${PKG}\" is alredy installed."
-      fi
-    done
+      done
+    else
+      for PKG in ${PKG_DEBIAN} ; do
+        if ! which ${PKG} &> /dev/null ; then
+          apt-get update &> /dev/null
+          if apt-get install -y ${PKG} &> /dev/null ; then
+            logger DEBUG "Successfully installed tool \"${PKG}\"."
+          else
+            logger ERROR "Can't install tool \"${PKG}\", please check logfiles."
+            exit 1
+          fi
+        else
+          logger DEBUG "Tool \"${PKG}\" is alredy installed."
+        fi
+      done
+    fi
   fi
 }
 
