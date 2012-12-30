@@ -12,7 +12,7 @@
 #-----------------------------------------------------------------------------------------------------
 # DevOpts:
 #-----------------------------------------------------------------------------------------------------
-# alias purge="sudo ./astack4atlassian purge --debug && sudo aptitude purge -y mysql-server && sudo rm -rf /var/lib/mysql/"
+# alias purge="sudo ./astack4atlassian purge --debug && sudo aptitude purge -y mysql-server git xmlstarlet && sudo rm -rf /var/lib/mysql/"
 
 #-----------------------------------------------------------------------------------------------------
 # configuration
@@ -20,7 +20,7 @@
 APPS='crowd confluence jira stash'
 PATH_DEST='/opt'
 PATH_TEMP='/tmp'
-LOG_FILE="astack.log"
+LOG_FILE='astack.log'
 LOG_LEVEL='INFO'
 MAX_BINS=3
 MAX_BACKUPS=7
@@ -70,6 +70,7 @@ JOB_INSTALL=0
 JOB_BACKUP=0
 JOB_RESTORE=0
 JOB_PURGE=0
+JOB_TEST=0
 VERSION_NOW=0
 VERSION_UPDATE=0
 ALT_NAMES=0
@@ -93,6 +94,7 @@ if [ $# -gt 0 ] ; then
       backup)        JOB_BACKUP=1 ;;
       restore)       JOB_RESTORE=1 ;;
       purge)         JOB_PURGE=1 ;;
+      test)         JOB_TEST=1 ;;
       --domain)      shift; DOMAIN=$1 ;;
       --application) shift; APPS=$1 ;;
       --destination) shift; PATH_DEST=$1 ;;
@@ -108,7 +110,7 @@ if [ $# -gt 0 ] ; then
   done
 fi
 
-if [ "${JOB_INSTALL}" -eq 0 ] || [ "${JOB_UPDATE}" -eq 0 ] || [ "${JOB_PURGE}" -eq 0 ] || [ "${JOB_BACKUP}" -eq 0 ]; then
+if [ "${JOB_INSTALL}" -eq 0 ] || [ "${JOB_UPDATE}" -eq 0 ] || [ "${JOB_PURGE}" -eq 0 ] || [ "${JOB_BACKUP}" -eq 0 ] || [ ${JOB_TEST} -eq 0 ] ; then
   if [ "${JOB_INSTALL}" -ne 0 ] || [ "${JOB_UPDATE}" -ne 0 ]; then
     if [ "${DOMAIN}" == "0" ] || [ "x${DOMAIN}" == "x" ]; then
       echo -e "${ERROR}"
@@ -234,15 +236,15 @@ function checkMemoryusage() {
 
 function installTools() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    if grep "6.*.*" /etc/debian_version &> /dev/null && [ ${PKG} == "git" ]; then
-      if ! grep -R backports /etc/apt/sources* &> /dev/null ; then
-        if echo "deb http://backports.debian.org/debian-backports squeeze-backports main" >> /etc/apt/sources.list ; then
-          logger DEBUG "Successfully add backports repository to Debian Squeeze."
-        else
-          logger ERROR "Can't add backports repository to Debian Squeeze."
+    for PKG in ${PKG_DEBIAN} ; do
+      if [[ $(cat /etc/debian_version) == "6."*"."* && ${PKG} == "git" ]] ; then
+        if ! grep -R backports /etc/apt/sources* &> /dev/null ; then
+          if echo "deb http://backports.debian.org/debian-backports squeeze-backports main" >> /etc/apt/sources.list ; then
+            logger DEBUG "Successfully add backports repository to Debian Squeeze."
+          else
+            logger ERROR "Can't add backports repository to Debian Squeeze."
+          fi
         fi
-      fi
-      for PKG in ${PKG_DEBIAN} ; do
         if ! which ${PKG} &> /dev/null ; then
           apt-get update &> /dev/null
           if apt-get -t squeeze-backports -y install ${PKG} &> /dev/null ; then
@@ -254,9 +256,7 @@ function installTools() {
         else
           logger DEBUG "Tool \"${PKG}\" is alredy installed."
         fi
-      done
-    else
-      for PKG in ${PKG_DEBIAN} ; do
+      else
         if ! which ${PKG} &> /dev/null ; then
           apt-get update &> /dev/null
           if apt-get install -y ${PKG} &> /dev/null ; then
@@ -268,8 +268,8 @@ function installTools() {
         else
           logger DEBUG "Tool \"${PKG}\" is alredy installed."
         fi
-      done
-    fi
+      fi
+    done
   fi
 }
 
@@ -1311,7 +1311,7 @@ if [ ${JOB_RESTORE} -eq 1 ] ; then
 fi
 
 if [ ${JOB_PURGE} -eq 1 ] ; then
-  read -r -p "Are you sure to purge your installation? [Y/n] " response
+  read -r -p "Are you sure? [Y/n] " response
   if [[ $response =~ ^([yY][eE][sS]|[yY])$ ]]; then
     purgeJava
     for APP in ${APPS}; do
@@ -1325,6 +1325,10 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
       logger INFO "Successfully purged \"${APP}\".\n"
     done
   fi
+fi
+
+if [ ${JOB_TEST} -eq 1 ] ; then
+    installTools
 fi
 
 unset MYSQL_PASS
