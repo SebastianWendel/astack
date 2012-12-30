@@ -94,7 +94,7 @@ if [ $# -gt 0 ] ; then
       backup)        JOB_BACKUP=1 ;;
       restore)       JOB_RESTORE=1 ;;
       purge)         JOB_PURGE=1 ;;
-      test)         JOB_TEST=1 ;;
+      test)          JOB_TEST=1 ;;
       --domain)      shift; DOMAIN=$1 ;;
       --application) shift; APPS=$1 ;;
       --destination) shift; PATH_DEST=$1 ;;
@@ -387,7 +387,6 @@ function deployDriverJDBC() {
 
 function createDatabase() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ]; then
-    #if dpkg -s mysql-server &> /dev/null ; then
     if which mysqld &> /dev/null ; then
       logger DEBUG "MySQL database server is already running."
       if [ ! -n "${MYSQL_PASS}" ]; then
