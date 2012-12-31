@@ -15,12 +15,18 @@
 # alias purge="sudo ./astack4atlassian purge --debug && sudo aptitude purge -y mysql-server git xmlstarlet && sudo rm -rf /var/lib/mysql/"
 
 #-----------------------------------------------------------------------------------------------------
+# script behavior
+#-----------------------------------------------------------------------------------------------------
+#set -o nounset
+#set -o errexit
+
+#-----------------------------------------------------------------------------------------------------
 # configuration
 #-----------------------------------------------------------------------------------------------------
 APPS='crowd confluence jira stash'
 PATH_DEST='/opt'
 PATH_TEMP='/tmp'
-LOG_FILE='astack.log'
+LOG_FILE='/var/log/astack.log'
 LOG_LEVEL='INFO'
 MAX_BINS=3
 MAX_BACKUPS=7
@@ -120,15 +126,6 @@ if [ "${JOB_INSTALL}" -eq 0 ] || [ "${JOB_UPDATE}" -eq 0 ] || [ "${JOB_PURGE}" -
 fi
 
 #-----------------------------------------------------------------------------------------------------
-# script behavior
-#-----------------------------------------------------------------------------------------------------
-#set -o nounset
-#set -o errexit
-
-# SET OUTPUT REDIRECTION
-exec > >(tee -a ${LOG_FILE}) 2>&1
-
-#-----------------------------------------------------------------------------------------------------
 # environment
 #-----------------------------------------------------------------------------------------------------
 
@@ -195,19 +192,20 @@ fi
 #-----------------------------------------------------------------------------------------------------
 # functions
 #-----------------------------------------------------------------------------------------------------
+
 function logger() {
   TIME_STAMP=$(date +'%Y-%m-%d %T')
   if [ ${1} == "INFO" ] || [ ${1} == "ERROR" ]; then
     if [ ${1} == "INFO" ]; then
-      echo -e "${TIME_STAMP} [${1}]  ${2}"
+      echo -e "${TIME_STAMP} [${1}]  ${2}" >> ${LOG_FILE} && echo -e ${2}
     else
-      echo -e "${TIME_STAMP} [${1}] ${2}"
+      echo -e "${TIME_STAMP} [${1}] ${2}" >> ${LOG_FILE} && echo -e ${2}
     fi
   elif [ ${LOG_LEVEL} == "DEBUG" ]; then
     if [ ${1} == "WARN" ]; then
-      echo -e "${TIME_STAMP} [${1}]  ${2}"
+      echo -e "${TIME_STAMP} [${1}]  ${2}" >> ${LOG_FILE} && echo -e ${2}
     else    
-      echo -e "${TIME_STAMP} [${1}] ${2}"
+      echo -e "${TIME_STAMP} [${1}] ${2}" >> ${LOG_FILE} && echo -e ${2}
     fi
   fi
 }
@@ -1247,8 +1245,9 @@ if [ ${JOB_UPDATE} -eq 1 ] ; then
     serverMemorycalc ${APP}
     setFixes ${APP}
     startApp ${APP}
-    logger INFO "Successfully updated \"${APP}\".\n"
+    logger INFO "Successfully updated \"${APP}\"."
   done
+  logger INFO "Successfully finished astack4atlassian.\n"
 fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
@@ -1292,8 +1291,9 @@ if [ ${JOB_BACKUP} -eq 1 ] ; then
     backupDatabase ${APP}
     backupHome ${APP}
     startApp ${APP}
-    logger INFO "Successfully backup \"${APP}\".\n"
+    logger INFO "Successfully backup \"${APP}\"."
   done
+  logger INFO "Successfully finished astack4atlassian.\n"
 fi
 
 if [ ${JOB_RESTORE} -eq 1 ] ; then
@@ -1305,8 +1305,9 @@ if [ ${JOB_RESTORE} -eq 1 ] ; then
     restoreLatestData ${APP}
     restoreDatabase ${APP}
     startApp ${APP}
-    logger INFO "Successfully restore \"${APP}\".\n"
+    logger INFO "Successfully restore \"${APP}\"."
   done
+  logger INFO "Successfully finished astack4atlassian.\n"
 fi
 
 if [ ${JOB_PURGE} -eq 1 ] ; then
@@ -1321,9 +1322,10 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
       if [ ${EXT_PROXY} -ne 1 ] ; then
         purgeVhost ${APP}
       fi
-      logger INFO "Successfully purged \"${APP}\".\n"
+      logger INFO "Successfully purged \"${APP}\"."
     done
   fi
+  logger INFO "Successfully finished astack4atlassian.\n"
 fi
 
 if [ ${JOB_TEST} -eq 1 ] ; then
