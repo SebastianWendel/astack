@@ -197,15 +197,15 @@ function logger() {
   TIME_STAMP=$(date +'%Y-%m-%d %T')
   if [ ${1} == "INFO" ] || [ ${1} == "ERROR" ]; then
     if [ ${1} == "INFO" ]; then
-      echo -e "${TIME_STAMP} [${1}]  ${2}" >> ${LOG_FILE} && echo -e ${2}
+      echo -e "${TIME_STAMP} [${1}]  ${2}" >> ${LOG_FILE} && echo -e "${2}"
     else
-      echo -e "${TIME_STAMP} [${1}] ${2}" >> ${LOG_FILE} && echo -e ${2}
+      echo -e "${TIME_STAMP} [${1}] ${2}" >> ${LOG_FILE} && echo -e "${2}"
     fi
   elif [ ${LOG_LEVEL} == "DEBUG" ]; then
     if [ ${1} == "WARN" ]; then
-      echo -e "${TIME_STAMP} [${1}]  ${2}" >> ${LOG_FILE} && echo -e ${2}
+      echo -e "${TIME_STAMP} [${1}]  ${2}" >> ${LOG_FILE} && echo -e "${2}"
     else    
-      echo -e "${TIME_STAMP} [${1}] ${2}" >> ${LOG_FILE} && echo -e ${2}
+      echo -e "${TIME_STAMP} [${1}] ${2}" >> ${LOG_FILE} && echo -e "${2}"
     fi
   fi
 }
