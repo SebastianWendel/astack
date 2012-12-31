@@ -1,7 +1,7 @@
 #!/bin/bash
 #-----------------------------------------------------------------------------------------------------
-# File:         astack4atlassian
-# Description:  install, update, backup and restore atlassian products
+# Name:         astack for atlassian
+# Description:  show, install, update, backup and restore atlassian products
 # Plattform:    Debian, Ubuntu
 # Created:      01.09.2012
 # Version:      0.1.0
@@ -12,7 +12,7 @@
 #-----------------------------------------------------------------------------------------------------
 # DevOpts:
 #-----------------------------------------------------------------------------------------------------
-# alias purge="sudo ./astack4atlassian purge --debug && sudo aptitude purge -y mysql-server git xmlstarlet && sudo rm -rf /var/lib/mysql/"
+# alias purge="sudo ./astack purge --debug && sudo aptitude purge -y postfix mysql-server git xmlstarlet && sudo rm -rf /var/lib/mysql/"
 
 #-----------------------------------------------------------------------------------------------------
 # script behavior
@@ -37,6 +37,7 @@ MAX_BACKUPS=7
 USAGE="\nUSAGE: $(basename $0) [SUBCOMMAND] [OPTIONS] ...
 
 Subcommands:
+show:           show the latest available version to install 
 install:        installs the specified applications
 update:         update the specified applications to the latest release
 backup:         backup the current applications
@@ -71,8 +72,9 @@ ERROR="\nERROR: You need to pass a subcommand like install or update and a optio
 #-----------------------------------------------------------------------------------------------------
 TIMESTAMP=$(date +%Y%m%d%H%M%S)
 DOMAIN=0
-JOB_UPDATE=0
+JOB_SHOW=0
 JOB_INSTALL=0
+JOB_UPDATE=0
 JOB_BACKUP=0
 JOB_RESTORE=0
 JOB_PURGE=0
@@ -95,6 +97,7 @@ fi
 if [ $# -gt 0 ] ; then
   while true ; do
     case $1 in
+      show)          JOB_SHOW=1 ;;
       install)       JOB_INSTALL=1 ;;
       update)        JOB_UPDATE=1 ;;
       backup)        JOB_BACKUP=1 ;;
@@ -116,7 +119,7 @@ if [ $# -gt 0 ] ; then
   done
 fi
 
-if [ "${JOB_INSTALL}" -eq 0 ] || [ "${JOB_UPDATE}" -eq 0 ] || [ "${JOB_PURGE}" -eq 0 ] || [ "${JOB_BACKUP}" -eq 0 ] || [ ${JOB_TEST} -eq 0 ] ; then
+if [ "${JOB_INSTALL}" -eq 0 ] || [ "${JOB_UPDATE}" -eq 0 ] || [ "${JOB_PURGE}" -eq 0 ] || [ "${JOB_BACKUP}" -eq 0 ] || [ ${JOB_TEST} -eq 0 ] || [ ${JOB_SHOW} -eq 0 ]; then
   if [ "${JOB_INSTALL}" -ne 0 ] || [ "${JOB_UPDATE}" -ne 0 ]; then
     if [ "${DOMAIN}" == "0" ] || [ "x${DOMAIN}" == "x" ]; then
       echo -e "${ERROR}"
@@ -192,7 +195,6 @@ fi
 #-----------------------------------------------------------------------------------------------------
 # functions
 #-----------------------------------------------------------------------------------------------------
-
 function logger() {
   TIME_STAMP=$(date +'%Y-%m-%d %T')
   if [ ${1} == "INFO" ] || [ ${1} == "ERROR" ]; then
@@ -769,6 +771,27 @@ function deployLatestJava() {
   fi
 }
  
+function showApp() {
+  BIN_URL=$(wget -qO- https://my.atlassian.com/download/feeds/current/${1}.json | \
+            grep -Po '"zipUrl":.*?[^\\]",'  | \
+            grep tar.gz | \
+            grep -v cluster | \
+            grep -v "\-war." | \
+            cut -d"\"" -f4)
+  FILE_NAME=$(echo ${BIN_URL} | cut -d"/" -f8 )
+  FOLDER_NAME=${FILE_NAME%.tar.gz}
+  if [ ! "x${FOLDER_NAME}" == "x" ] ; then
+    logger INFO "Latest availalble version is \"${FOLDER_NAME}\"."
+  else
+    logger ERROR "Can't get version from \"https://my.atlassian.com/download/feeds/current/${1}.json\", script will exit."
+    exit 1
+  fi
+  if [ -L ${PATH_DEST}/${1}/current ]; then
+    INSTALLED_VERSION="$(basename $(readlink ${PATH_DEST}/${1}/CURRENT))"
+    logger INFO "Installed version is \"${INSTALLED_VERSION}\"."
+  fi
+}
+
 function deployLatestBin() {
   BIN_URL=$(wget -qO- https://my.atlassian.com/download/feeds/current/${1}.json | \
             grep -Po '"zipUrl":.*?[^\\]",'  | \
@@ -1231,23 +1254,10 @@ function restoreDatabase() {
 #-----------------------------------------------------------------------------------------------------
 # function calls
 #-----------------------------------------------------------------------------------------------------
-if [ ${JOB_UPDATE} -eq 1 ] ; then
-  checkFilesystem
-  deployLatestJava
+if [ ${JOB_SHOW} -eq 1 ] ; then
   for APP in ${APPS}; do
-    PATH_DATA="${PATH_DEST}/${APP}/data"
-    PATH_BACKUP="${PATH_DEST}/${APP}/backup"
-    stopApp ${APP}
-    deployLatestBin ${APP}
-    deployDriverJDBC ${APP}
-    configTomcatProxy ${APP}
-    setHomes ${APP}
-    serverMemorycalc ${APP}
-    setFixes ${APP}
-    startApp ${APP}
-    logger INFO "Successfully updated \"${APP}\"."
+    showApp ${APP}
   done
-  logger INFO "Successfully finished astack4atlassian.\n"
 fi
 
 if [ ${JOB_INSTALL} -eq 1 ] ; then
@@ -1281,6 +1291,25 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
   done
   logger INFO "Successfully finished astack4atlassian.\n"
 fi 
+
+if [ ${JOB_UPDATE} -eq 1 ] ; then
+  checkFilesystem
+  deployLatestJava
+  for APP in ${APPS}; do
+    PATH_DATA="${PATH_DEST}/${APP}/data"
+    PATH_BACKUP="${PATH_DEST}/${APP}/backup"
+    stopApp ${APP}
+    deployLatestBin ${APP}
+    deployDriverJDBC ${APP}
+    configTomcatProxy ${APP}
+    setHomes ${APP}
+    serverMemorycalc ${APP}
+    setFixes ${APP}
+    startApp ${APP}
+    logger INFO "Successfully updated \"${APP}\"."
+  done
+  logger INFO "Successfully finished astack4atlassian.\n"
+fi
 
 if [ ${JOB_BACKUP} -eq 1 ] ; then
   checkFilesystem
