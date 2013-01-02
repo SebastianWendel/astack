@@ -2,22 +2,19 @@
 
 Atlassian is the industry leader for Software development and collaboration tools for teams, from startup to enterprise. And as Web applications become more critical to business functions we need to ensure that this infrastructure is configured properly and not leave any bugs that are already fixed. This tool will keep it to up to date and do it always the same way so you're infrastructure stays consistent.
 
-This Project astack4atlassian is a script to securely deploy and update Atlassians developer applications in less than five minutes.
+This Project astack for atlassian is a script to securely deploy and update Atlassians developer applications in less than five minutes, like apt or yum.
 
 For more Information to Atlassians Produrcts please visit: http://www.atlassian.com
 
 # Features #
 
 ## Dependencies ##
-By default the following system packages will be managed:
+You need a fresh System installation, all dependencies will be handled by the script:
 * Apache Webserver
 * Postfix Mail Server
 * MySQL Database Server
-
-The script installs and updates the runtime environment:
+* Init Scripts
 * Oracle Java JVM > 1.7
-
-The script installs and updates the database driver:
 * MySQL JDBC Driver
 
 ## Applications ##
@@ -29,7 +26,7 @@ The script installs and updates the database driver:
 All applications will be deployed as a standalone installation bundled with tomcat as the application server.
 
 ## Procedures ##
-
+* **show** shows the latest available version to install
 * **install** applications with the latest stable release
 * **update** existing applications to the latest stable release
 * **backup** existing mysql database, the home folder and the actual binary folder
@@ -103,15 +100,16 @@ Of course "example.com" is just an example and can be set by an option switch to
 # Usage #
 To start using astak, download, make it executable and run it:
 
-    wget https://raw.github.com/sebwendel/astack4atlassian/master/astack4atlassian
-    chmod +x astack4atlassian
-    ./astack4atlassian
+    wget https://raw.github.com/sourceindex/astack/master/astack
+    chmod +x astack
+    ./astack
 
 The help output should give you some overview:
 
-    USAGE: astack4atlassian [SUBCOMMAND] [OPTIONS] ...
+    USAGE: astack [SUBCOMMAND] [OPTIONS] ...
     
     Subcommands:
+    show:           show the latest available version to install
     install:        installs the specified applications
     update:         updates the specified applications to the latest release
     backup:         backups the current applications
@@ -130,15 +128,16 @@ The help output should give you some overview:
 
 Some Examples:
 
-    astack4atlassian install --domain example.com
-    astack4atlassian install --domain example.com --alt-names --applications "confluence jira"
-    astack4atlassian update --domain example.com --alt-names --ext-proxy
-    astack4atlassian backup
-    astack4atlassian restore
+    astack show
+    astack install --domain example.com
+    astack install --domain example.com --alt-names --applications "confluence jira"
+    astack update --domain example.com --alt-names --ext-proxy
+    astack backup
+    astack restore
 
 ## Post Installation ##
 
-The only thing that is not automatic is the post installation process after the first deployment.
+The only things that are not automatic are the Apache ssl settings in your vhost config and post installation process after the first deployment. 
 
 After you finish the installation you can go directly to the Setup process on the wiki:
 https://confluence.atlassian.com
@@ -160,7 +159,7 @@ I plan to add features like the following:
 
 If you have any questions or recommendations just create a issue at the github repository.
 
-https://github.com/sebwendel/astack4atlassian/issues
+https://github.com/sourceindex/astack4atlassian/issues
 
 If you want to help have a look at the github issues section, patches are more than welcome.
 
@@ -168,7 +167,7 @@ If you want to help have a look at the github issues section, patches are more t
 
 Author: Sebastian Wendel, (<packages@sourceindex.de>)
 
-Copyright: 2012, SourceIndex IT-Serives
+Copyright: 2013, SourceIndex IT-Serives
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
