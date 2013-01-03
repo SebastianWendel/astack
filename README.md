@@ -109,28 +109,28 @@ The help output should give you some overview:
     USAGE: astack [SUBCOMMAND] [OPTIONS] ...
     
     Subcommands:
-    show:           show the latest available version to install
-    install:        installs the specified applications
-    update:         updates the specified applications to the latest release
-    backup:         backups the current applications
-    restore:        restores the specified applications from the latest backup
-    purge:          removes all installations including there data, but no system componets
+    show            show the latest available version to install
+    install         installs the specified applications
+    update          updates the specified applications to the latest release
+    backup          backups the current applications
+    restore         restores the specified applications from the latest backup
+    purge           removes all installations including there data, but no system componets
     
     Options:
-    --domain:       specifies the your domain, there is no default
-    --applications: specifies the applications, the default is: crowd confluence jira stash
-    --destination:  specifies the destination folder, the default is: /opt
-    --alt-names:    specifies altenative secondary domain names 
-    --ext-proxy:    uses that switch to export the proxy config for another system
-    --debug:        runs the script with debugging output
-    --verbose:      runs the script with developer output
-    -h -? --help:   shows that help output
+    --domain        specifies the your domain, there is no default
+    --application   specifies the applications, the default is: crowd confluence jira stash
+    --destination   specifies the destination folder, the default is: /opt
+    --alt-names     specifies altenative secondary domain names 
+    --ext-proxy     uses that switch to export the proxy config for another system
+    --debug         runs the script with debugging output
+    --verbose       runs the script with developer output
+    -h -? --help    shows that help output
 
 Some Examples:
 
     astack show
     astack install --domain example.com
-    astack install --domain example.com --alt-names --applications "confluence jira"
+    astack install --domain example.com --alt-names --application "confluence jira"
     astack update --domain example.com --alt-names --ext-proxy
     astack backup
     astack restore

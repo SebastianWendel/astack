@@ -4,7 +4,7 @@
 # Description:  show, install, update, backup and restore atlassian products
 # Plattform:    Debian, Ubuntu
 # Created:      01.09.2012
-# Version:      0.1.0
+# Version:      0.1.1
 # Author:       Sebastian Wendel, SourceIndex IT-Services, Hamburg/Germany
 # License:      Apache License, Version 2.0
 #-----------------------------------------------------------------------------------------------------
@@ -37,26 +37,26 @@ MAX_BACKUPS=7
 USAGE="\nUSAGE: $(basename $0) [SUBCOMMAND] [OPTIONS] ...
 
 Subcommands:
-show:           show the latest available version to install 
-install:        installs the specified applications
-update:         update the specified applications to the latest release
-backup:         backup the current applications
-restore:        restore the specified applications from the latest backup
-purge:          remove all installations including there data, but no system componets
+show            show the latest available version to install 
+install         installs the specified applications
+update          update the specified applications to the latest release
+backup          backup the current applications
+restore         restore the specified applications from the latest backup
+purge           remove all installations including there data, but no system componets
 
 Options:
---domain:       specifie the your domain, there is no default
---applications: specifie the applications, the default is: ${APPS}
---destination:  specifie the destination folder, the default is: ${PATH_DEST}
---alt-names:    specifie altenative secondary domain names 
---ext-proxy:    use that switch to export the proxy config for another system
---debug:        run the script with debugging output
---verbose:      run the script with developer output
--h -? --help:   show that help output
+--domain        specifie the your domain, there is no default
+--application   specifie the applications, the default is: ${APPS}
+--destination   specifie the destination folder, the default is: ${PATH_DEST}
+--alt-names     specifie altenative secondary domain names 
+--ext-proxy     use that switch to export the proxy config for another system
+--debug         run the script with debugging output
+--verbose       run the script with developer output
+-h -? --help    show that help output
 
 Some Examples:
 $(basename $0) install --domain example.com
-$(basename $0) install --domain example.com --alt-names --applications \"confluence jira\"
+$(basename $0) install --domain example.com --alt-names --application \"confluence jira\"
 $(basename $0) update --domain example.com --alt-names --ext-proxy
 $(basename $0) backup
 $(basename $0) restore
