@@ -4,7 +4,7 @@
 # Description:  show, install, update, backup and restore atlassian products
 # Plattform:    Debian, Ubuntu
 # Created:      01.09.2012
-# Version:      0.1.1
+# Version:      0.1.2
 # Author:       Sebastian Wendel, SourceIndex IT-Services, Hamburg/Germany
 # License:      Apache License, Version 2.0
 #-----------------------------------------------------------------------------------------------------
@@ -55,6 +55,7 @@ Options:
 -h -? --help    show that help output
 
 Some Examples:
+$(basename $0) show
 $(basename $0) install --domain example.com
 $(basename $0) install --domain example.com --alt-names --application \"confluence jira\"
 $(basename $0) update --domain example.com --alt-names --ext-proxy
@@ -83,7 +84,7 @@ VERSION_NOW=0
 VERSION_UPDATE=0
 ALT_NAMES=0
 EXT_PROXY=0
-PKG_DEBIAN="git xmlstarlet"
+PKG_DEBIAN="bc git xmlstarlet"
 PKG_REDHAT=""
 
 #-----------------------------------------------------------------------------------------------------
@@ -182,14 +183,6 @@ fi
 if [ $(pgrep $(basename $0) | wc -l) -gt 2 ]; then
   echo "This script is already running, script will exit now."
   exit
-fi
-
-# CHECK AVAILABLE MEMORY FOR EACH APPLICATION
-APP_MEM_FREE="$(echo "($(free -l | grep "Mem:" | awk '{print $4}') / $(echo "${APPS} mysql" | wc -w)) / 1024"  | bc)"
-APP_MEM_PERM="$(echo "${APP_MEM_FREE} / 5" | bc)"
-APP_MEM_HEAP="$(echo "${APP_MEM_PERM} * 4" | bc)"
-if [ "${APP_MEM_PERM}" -lt "256" ]; then 
-  APP_MEM_PERM="256"
 fi
 
 #-----------------------------------------------------------------------------------------------------
@@ -955,6 +948,12 @@ function setHomes() {
 }
 
 function serverMemorycalc() {
+  APP_MEM_FREE="$(echo "($(free -l | grep "Mem:" | awk '{print $4}') / $(echo "${APPS} mysql" | wc -w)) / 1024"  | bc)"
+  APP_MEM_PERM="$(echo "${APP_MEM_FREE} / 5" | bc)"
+  APP_MEM_HEAP="$(echo "${APP_MEM_PERM} * 4" | bc)"
+  if [ "${APP_MEM_PERM}" -lt "256" ]; then 
+    APP_MEM_PERM="256"
+  fi
   if [ ${1} == "jira" ]; then
     if sed "s/JVM_MAXIMUM_MEMORY=\"[0-9]*m\"/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
        sed "s/JVM_MINIMUM_MEMORY=\"[0-9]*m\"/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
