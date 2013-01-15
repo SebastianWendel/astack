@@ -12,7 +12,8 @@
 #-----------------------------------------------------------------------------------------------------
 # DevOpts:
 #-----------------------------------------------------------------------------------------------------
-# alias purge="sudo ./astack purge --debug && sudo aptitude purge -y postfix mysql-server git xmlstarlet && sudo rm -rf /var/lib/mysql/"
+# alias purge="sudo ./astack purge --debug && sudo aptitude purge -y postfix mysql-server git xmlstarlet && sudo rm -rf /var/lib/mysql/ /var/log/astack.log"
+# alias inst="sudo ./astack install --domain example.com --alt-names --debug"
 
 #-----------------------------------------------------------------------------------------------------
 # script behavior
@@ -23,7 +24,7 @@
 #-----------------------------------------------------------------------------------------------------
 # configuration
 #-----------------------------------------------------------------------------------------------------
-APPS='crowd confluence jira stash'
+APPS='crowd confluence jira stash fisheye'
 PATH_DEST='/opt'
 PATH_TEMP='/tmp'
 LOG_FILE='/var/log/astack.log'
@@ -37,22 +38,22 @@ MAX_BACKUPS=7
 USAGE="\nUSAGE: $(basename $0) [SUBCOMMAND] [OPTIONS] ...
 
 Subcommands:
-show            show the latest available version to install 
-install         installs the specified applications
-update          update the specified applications to the latest release
-backup          backup the current applications
-restore         restore the specified applications from the latest backup
-purge           remove all installations including there data, but no system componets
+show           show the latest available version to install 
+install        installs the specified applications
+update         update the specified applications to the latest release
+backup         backup the current applications
+restore        restore the specified applications from the latest backup
+purge          remove all installations including there data, but no system componets
 
 Options:
---domain        specifie the your domain, there is no default
---application   specifie the applications, the default is: ${APPS}
---destination   specifie the destination folder, the default is: ${PATH_DEST}
---alt-names     specifie altenative secondary domain names 
---ext-proxy     use that switch to export the proxy config for another system
---debug         run the script with debugging output
---verbose       run the script with developer output
--h -? --help    show that help output
+--domain       specifie the your domain, there is no default
+--application  specifie the applications, the default is: ${APPS}
+--destination  specifie the destination folder, the default is: ${PATH_DEST}
+--alt-names    specifie altenative secondary domain names 
+--ext-proxy    use that switch to export the proxy config for another system
+--debug        run the script with debugging output
+--verbose      run the script with developer output
+-h -? --help   show that help output
 
 Some Examples:
 $(basename $0) show
@@ -238,16 +239,14 @@ function installTools() {
             logger ERROR "Can't add backports repository to Debian Squeeze."
           fi
         fi
-        if ! which ${PKG} &> /dev/null ; then
-          apt-get update &> /dev/null
-          if apt-get -t squeeze-backports -y install ${PKG} &> /dev/null ; then
-            logger DEBUG "Successfully installed tool \"${PKG}\"."
-          else
-            logger ERROR "Can't install tool \"${PKG}\", please check logfiles."
-            exit 1
-          fi
+        # need to purge git so it's shure you get the right version
+        apt-get purge ${PKG} &> /dev/null
+        apt-get update &> /dev/null
+        if apt-get -t squeeze-backports -y install ${PKG} &> /dev/null ; then
+          logger DEBUG "Successfully installed tool \"${PKG}\"."
         else
-          logger DEBUG "Tool \"${PKG}\" is alredy installed."
+          logger ERROR "Can't install tool \"${PKG}\", please check logfiles."
+          exit 1
         fi
       else
         if ! which ${PKG} &> /dev/null ; then
@@ -259,7 +258,7 @@ function installTools() {
             exit 1
           fi
         else
-          logger DEBUG "Tool \"${PKG}\" is alredy installed."
+          logger DEBUG "Tool \"${PKG}\" is already installed."
         fi
       fi
     done
@@ -277,7 +276,7 @@ function installApache() {
         exit 1
       fi
     else
-      logger DEBUG "Apache web server is alredy installed."
+      logger DEBUG "Apache web server is already installed."
     fi
     if a2enmod proxy proxy_http ssl rewrite &> /dev/null ; then
       logger DEBUG "Successfully loaded Apache web server modules."
@@ -319,7 +318,7 @@ function installMySQL() {
         exit 1
       fi
     else
-      logger DEBUG "MySQL-Server is alredy installed."
+      logger DEBUG "MySQL-Server is already installed."
     fi
   fi
 }
@@ -334,7 +333,7 @@ function installPostfix() {
         exit 1
       fi
     else
-      logger DEBUG "Postfix mailserver is alredy installed."
+      logger DEBUG "Postfix mailserver is already installed."
     fi
   fi
 }
@@ -410,7 +409,7 @@ function createDatabase() {
       logger INFO "Successfully created database \"${1}\" with password \"${PASSWORD}\"."
     fi
   else
-    logger INFO "Can't create database \"${1}\", maybe it alredy exists!"
+    logger INFO "Can't create database \"${1}\", maybe it already exists!"
   fi
 }
 
@@ -459,8 +458,13 @@ function createCerts() {
 }
 
 function createVhost() {
-  TOMCAT_CONFIG=$(find ${PATH_DEST}/${1} -name server.xml)
-  TOMCAT_PORT=$(xmlstarlet sel -t -m Server/Service/Connector -v @port ${TOMCAT_CONFIG})
+  if [ ! ${1} == "fisheye" ]; then
+    TOMCAT_CONFIG=$(find ${PATH_DEST}/${1} -name server.xml)
+    TOMCAT_PORT=$(xmlstarlet sel -t -m Server/Service/Connector -v @port ${TOMCAT_CONFIG})
+  else
+    TOMCAT_CONFIG=$(find ${PATH_DEST}/${1} -name config.xml)
+    TOMCAT_PORT=$(xmlstarlet sel -t -m config/web-server/http -v @bind ${TOMCAT_CONFIG} | cut -d: -f2)
+  fi
   if [ ${ALT_NAMES} -eq 1 ] ; then
     if [ ${1} == "jira" ]; then
         APP_NAME="projects"
@@ -468,6 +472,8 @@ function createVhost() {
         APP_NAME="wiki"
     elif [ ${1} == "stash" ]; then
         APP_NAME="git"
+    elif [ ${1} == "fisheye" ]; then
+        APP_NAME="repo"
     elif [ ${1} == "crowd" ]; then
         APP_NAME="id"
     fi
@@ -680,7 +686,6 @@ function purgeJava() {
 function stopApp() {
   PID=$(ps -ef | grep ${1} | grep -v -e "grep" -e "$(basename $0)" | awk '{print $2}')
   if [ ! "x${PID}" == "x" ] ; then
-    logger DEBUG "Application \"${1}\" pid is \"${PID}\"."
     while ps ef ${PID} &> /dev/null ; do
       kill ${PID} &> /dev/null
       sleep 2
@@ -690,10 +695,9 @@ function stopApp() {
 }
 
 function startApp() {
-  PID=$(ps -ef | grep ${1} | grep -v "grep" | awk '{print $2}')
+  PID=$(ps -ef | grep ${1} | grep -v -e "grep" -e "$(basename $0)" | awk '{print $2}')
   if [ "x${PID}" == "x" ] ; then
-    logger DEBUG "Application \"${1}\" is not running, so start it."
-    SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name startup.sh)
+    SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name start\*.sh | grep -v '-')
     if su ${1} -l -c "${SCRIPT_START} &> /dev/null" ; then
       logger INFO "Successfully started application \"${1}\"."
     else 
@@ -784,14 +788,24 @@ function showApp() {
 }
 
 function deployLatestBin() {
-  BIN_URL=$(wget -qO- https://my.atlassian.com/download/feeds/current/${1}.json | \
-            grep -Po '"zipUrl":.*?[^\\]",'  | \
-            grep tar.gz | \
-            grep -v cluster | \
-            grep -v "\-war." | \
-            cut -d"\"" -f4)
-  FILE_NAME=$(echo ${BIN_URL} | cut -d"/" -f8 )
-  FOLDER_NAME=${FILE_NAME%.tar.gz}
+  if [ ! ${1} == "fisheye" ]; then
+    BIN_URL=$(wget -qO- https://my.atlassian.com/download/feeds/current/${1}.json | \
+              grep -Po '"zipUrl":.*?[^\\]",'  | \
+              grep tar.gz | \
+              grep -v cluster | \
+              grep -v "\-war." | \
+              cut -d"\"" -f4)
+    FILE_NAME=$(echo ${BIN_URL} | cut -d"/" -f8 )
+    FOLDER_NAME=${FILE_NAME%.tar.gz}
+  else
+    BIN_URL=$(wget -qO- https://my.atlassian.com/download/feeds/current/${1}.json | \
+              grep -Po '"zipUrl":.*?[^\\]",'  | \
+              grep zip | \
+              cut -d"\"" -f4)
+    FILE_NAME=$(echo ${BIN_URL} | cut -d"/" -f8 )
+    FOLDER_NAME=${FILE_NAME%.zip}
+    FISHEYE_VERSION=$(echo ${FOLDER_NAME} | cut -d'-' -f2)
+  fi
   if [ ! "x${FOLDER_NAME}" == "x" ] ; then
     logger DEBUG "Latest availalble version is \"${FOLDER_NAME}\"."
   else
@@ -811,11 +825,20 @@ function deployLatestBin() {
   if [ "x${CHECK_VERSION}" == "x" ] ; then 
     logger DEBUG "Version \"${FOLDER_NAME}\" does not exists, so continue."
     if [ -f ${PATH_TEMP}/${FILE_NAME} ] ; then
-      if tar -xzvf ${PATH_TEMP}/${FILE_NAME} -C ${PATH_DEST}/${1} &> /dev/null ; then
-        logger DEBUG "Successfully uncompress \"${PATH_TEMP}/${FILE_NAME}\" to \"${PATH_DEST}/${1}\"."
+      if [ ! ${1} == "fisheye" ]; then 
+        if tar -xzvf ${PATH_TEMP}/${FILE_NAME} -C ${PATH_DEST}/${1} &> /dev/null ; then
+          logger DEBUG "Successfully uncompress \"${PATH_TEMP}/${FILE_NAME}\" to \"${PATH_DEST}/${1}\"."
+        else
+          logger ERROR "Can't uncompress \"${PATH_TEMP}/${FILE_NAME}\" to \"${PATH_DEST}/${1}\"."
+          exit 1
+        fi
       else
-        logger ERROR "Can't uncompress \"${PATH_TEMP}/${FILE_NAME}\" to \"${PATH_DEST}/${1}\"."
-        exit 1
+        if unzip ${PATH_TEMP}/${FILE_NAME} -d ${PATH_DEST}/${1} &> /dev/null && mv ${PATH_DEST}/${1}/*-${FISHEYE_VERSION} ${PATH_DEST}/${1}/fisheye-${FISHEYE_VERSION} &> /dev/null ; then
+          logger DEBUG "Successfully uncompress \"${PATH_TEMP}/${FILE_NAME}\" to \"${PATH_DEST}/${1}\"."
+        else
+          logger ERROR "Can't uncompress \"${PATH_TEMP}/${FILE_NAME}\" to \"${PATH_DEST}/${1}\"."
+          exit 1
+        fi
       fi
     fi
     if [ ${1} == "jira" ] ; then
@@ -861,7 +884,11 @@ function deployLatestBin() {
 }
 
 function configTomcatProxy() {
-  TOMCAT_CONFIG=$(find ${PATH_DEST}/${1}/current/ -name server.xml)
+  if [ ! ${1} == "fisheye" ]; then ]
+    TOMCAT_CONFIG=$(find ${PATH_DEST}/${1}/current/ -name server.xml)
+  else
+    TOMCAT_CONFIG=$(find ${PATH_DEST}/${1}/current/ -name config.xml)
+  fi
   if [ ${ALT_NAMES} -eq 1 ] ; then
     if [ ${1} == "jira" ]; then
         APP_NAME="projects"
@@ -869,55 +896,88 @@ function configTomcatProxy() {
         APP_NAME="wiki"
     elif [ ${1} == "stash" ]; then
         APP_NAME="git"
+    elif [ ${1} == "fisheye" ]; then
+        APP_NAME="repo"
     elif [ ${1} == "crowd" ]; then
         APP_NAME="id"
     fi
   else
     APP_NAME=${1}
   fi
-  if [ -f ${TOMCAT_CONFIG} ] ; then 
-    if ! grep ${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
-      logger DEBUG "Tomcat's config \"${TOMCAT_CONFIG}\" seems not to be configured."
-      if xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "" ${TOMCAT_CONFIG} &> /dev/null ; then
-    	logger DEBUG "Successfully set application context path for \"${1}\"."
-      else
-        logger ERROR "Can't set set application context path for \"${1}\"."
-        exit 1
-      fi
-      if xmlstarlet ed -L -PS -u "/Server/Service/Connector/@connectionTimeout" -v "120000" ${TOMCAT_CONFIG} &> /dev/null ; then
-        logger DEBUG "Successfully set application proxy timeout for \"${1}\"."
-      else
-        logger ERROR "Can't set set application proxy timeout for \"${1}\"."
-        exit 1
-      fi
-      if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${APP_NAME}.${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
-        logger DEBUG "Successfully set application proxy name for \"${1}\"."
-      else
-        logger ERROR "Can't set set application proxy name for \"${1}\"."
-        exit 1
-      fi
-      if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyPort -v 443 ${TOMCAT_CONFIG} &> /dev/null ; then
-        logger DEBUG "Successfully set application proxy port path for \"${1}\"."
-      else
-        logger ERROR "Can't set set application proxy port for \"${1}\"."
-        exit 1
-      fi
-      if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n scheme -v https ${TOMCAT_CONFIG} &> /dev/null ; then
-        logger DEBUG "Successfully set application proxy scheme for \"${1}\"."
-      else
-        logger ERROR "Can't set set application proxy scheme for \"${1}\"."
-        exit 1
-      fi
-      if [ ${EXT_PROXY} -ne 1 ] ; then
-        if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n address -v "127.0.0.1" ${TOMCAT_CONFIG} &> /dev/null ; then
-          logger DEBUG "Successfully set application interface address for \"${1}\"."
+  if [ -f ${TOMCAT_CONFIG} ]; then
+    if [ "${TOMCAT_CONFIG}x" != "x" ]; then
+      if ! grep ${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
+        if [ "${1}" != "fisheye" ] ; then
+          if xmlstarlet ed -L -PS -u "/Server/Service/Engine/Host/Context/@path" -v "" ${TOMCAT_CONFIG} &> /dev/null ; then
+            logger DEBUG "Successfully set application context path for \"${1}\"."
+          else
+            logger ERROR "Can't set set application context path for \"${1}\"."
+            exit 1
+          fi
+          if xmlstarlet ed -L -PS -u "/Server/Service/Connector/@connectionTimeout" -v "120000" ${TOMCAT_CONFIG} &> /dev/null ; then
+            logger DEBUG "Successfully set application proxy timeout for \"${1}\"."
+          else
+            logger ERROR "Can't set set application proxy timeout for \"${1}\"."
+            exit 1
+          fi
+          if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyName -v ${APP_NAME}.${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
+            logger DEBUG "Successfully set application proxy name for \"${1}\"."
+          else
+            logger ERROR "Can't set set application proxy name for \"${1}\"."
+            exit 1
+          fi
+          if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n proxyPort -v 443 ${TOMCAT_CONFIG} &> /dev/null ; then
+            logger DEBUG "Successfully set application proxy port path for \"${1}\"."
+          else
+            logger ERROR "Can't set set application proxy port for \"${1}\"."
+            exit 1
+          fi
+          if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n scheme -v https ${TOMCAT_CONFIG} &> /dev/null ; then
+            logger DEBUG "Successfully set application proxy scheme for \"${1}\"."
+          else
+            logger ERROR "Can't set set application proxy scheme for \"${1}\"."
+            exit 1
+          fi
+          if [ ${EXT_PROXY} -ne 1 ] ; then
+            if xmlstarlet ed -L -PS -s /Server/Service/Connector -t attr -n address -v "127.0.0.1" ${TOMCAT_CONFIG} &> /dev/null ; then
+              logger DEBUG "Successfully set application interface address for \"${1}\"."
+            else
+              logger ERROR "Can't set set application interface address for \"${1}\"."
+              exit 1
+            fi
+          fi
         else
-          logger ERROR "Can't set set application interface address for \"${1}\"."
-          exit 1
+          if xmlstarlet ed -L -PS -s /config/web-server/http -t attr -n proxy-host -v ${APP_NAME}.${DOMAIN} ${TOMCAT_CONFIG} &> /dev/null ; then
+            logger DEBUG "Successfully set application proxy name for \"${1}\"."
+          else
+            logger ERROR "Can't set set application proxy name for \"${1}\"."
+            exit 1
+          fi
+          if xmlstarlet ed -L -PS -s /config/web-server/http -t attr -n proxy-port -v 443 ${TOMCAT_CONFIG} &> /dev/null ; then
+            logger DEBUG "Successfully set application proxy port path for \"${1}\"."
+          else
+            logger ERROR "Can't set set application proxy port for \"${1}\"."
+            exit 1
+          fi
+          if xmlstarlet ed -L -PS -s /config/web-server/http -t attr -n proxy-scheme -v https ${TOMCAT_CONFIG} &> /dev/null ; then
+            logger DEBUG "Successfully set application proxy scheme for \"${1}\"."
+          else
+            logger ERROR "Can't set set application proxy scheme for \"${1}\"."
+            exit 1
+          fi
+          if [ ${EXT_PROXY} -ne 1 ] ; then
+            TOMCAT_PORT=$(xmlstarlet sel -t -m config/web-server/http -v @bind ${TOMCAT_CONFIG} | cut -d: -f2)
+            if xmlstarlet ed -L -PS -u "/config/web-server/http/@bind" -v "127.0.0.1:${TOMCAT_PORT}" ${TOMCAT_CONFIG} &> /dev/null ; then
+              logger DEBUG "Successfully set application interface address for \"${1}\"."
+            else
+              logger ERROR "Can't set set application interface address for \"${1}\"."
+              exit 1
+            fi
+          fi
         fi
+      else
+        logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" is already configured."
       fi
-    else
-      logger DEBUG "The Tomcat config \"${TOMCAT_CONFIG}\" is already configured."
     fi
   fi
 }
@@ -944,6 +1004,15 @@ function setHomes() {
       logger ERROR "Can't add home path to \"${1}\" config."
       exit 1
     fi
+  fi
+}
+
+getServerMemory(){
+  export APP_MEM_FREE="$(echo "($(free -l | grep "Mem:" | awk '{print $4}') / $(echo "${APPS} mysql" | wc -w)) / 1024"  | bc)"
+  export APP_MEM_PERM="$(echo "${APP_MEM_FREE} / 5" | bc)"
+  export APP_MEM_HEAP="$(echo "${APP_MEM_PERM} * 4" | bc)"
+  if [ "${APP_MEM_PERM}" -lt "256" ]; then 
+    export APP_MEM_PERM="256"
   fi
 }
 
@@ -1112,7 +1181,7 @@ function backupHome() {
 
 function deployInitScript() {
   if [ ! -f /etc/init.d/${1} ] ; then
-    SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name startup.sh)
+    SCRIPT_START=$(find ${PATH_DEST}/${1}/current/ -name start\*.sh | grep -v '-')
     SCRIPT_STOP=$(find ${PATH_DEST}/${1}/current/ -name stop\*.sh)
     if [ ! "x${SCRIPT_START}" == "x" ] || [ ! "x${SCRIPT_STOP}" == "x" ] ; then
       HELPER_VARIABLE='$1'
@@ -1262,6 +1331,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
   checkFilesystem
   deployLatestJava
   installTools
+  getServerMemory
   installPostfix
   if [ ${EXT_PROXY} -ne 1 ] ; then
     installApache
@@ -1296,6 +1366,9 @@ if [ ${JOB_UPDATE} -eq 1 ] ; then
     PATH_DATA="${PATH_DEST}/${APP}/data"
     PATH_BACKUP="${PATH_DEST}/${APP}/backup"
     stopApp ${APP}
+  done
+  getServerMemory
+  for APP in ${APPS}; do
     deployLatestBin ${APP}
     deployDriverJDBC ${APP}
     configTomcatProxy ${APP}
@@ -1359,3 +1432,9 @@ if [ ${JOB_TEST} -eq 1 ] ; then
 fi
 
 unset MYSQL_PASS
+unset APP_MEM_FREE
+unset APP_MEM_PERM
+unset APP_MEM_HEAP
+unset APP_MEM_PERM
+
+exit 0
