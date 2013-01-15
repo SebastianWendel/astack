@@ -884,7 +884,7 @@ function deployLatestBin() {
 }
 
 function configTomcatProxy() {
-  if [ ! ${1} == "fisheye" ]; then ]
+  if [ ! ${1} == "fisheye" ]; then
     TOMCAT_CONFIG=$(find ${PATH_DEST}/${1}/current/ -name server.xml)
   else
     TOMCAT_CONFIG=$(find ${PATH_DEST}/${1}/current/ -name config.xml)
