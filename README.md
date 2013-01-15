@@ -21,7 +21,7 @@ You need a fresh System installation, all dependencies will be handled by the sc
 * **Jira** is the project tracker for teams planning, building and launching great products.
 * **Confluence** connects teams with the content and co-workers that need to get work done, faster.
 * **Stash** is Git management to create and manage repositories fast and enterprise-grade.
-* **Fisheye ** Source browser to monitor and analyze Subversion, Git and Mercurial.
+* **Fisheye** Source browser to monitor and analyze Subversion, Git and Mercurial.
 * **Crowd** is a single sign-on and user identity tool that's easy to use, administer, and integrate.
 
 All applications will be deployed as a standalone installation bundled with tomcat as the application server.
