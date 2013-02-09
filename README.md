@@ -21,7 +21,7 @@ For now the Script handles the following tasks:
 * MySQL Database creation
 * MySQL JDBC Driver installation
 * Setup Init scripts
-* Oracle Java JVM > 1.7 installation and upgrade
+* Oracle Java JVM > 1.7 installation and update
 * And of course the installation, configuration and update of the following applications
 
 ## Applications ##
@@ -169,7 +169,7 @@ I plan to add features like the following:
 
 If you have any questions or recommendations just create a issue at the github repository.
 
-https://github.com/sourceindex/astack4atlassian/issues
+https://github.com/sourceindex/astack/issues
 
 If you want to help have a look at the github issues section, patches are more than welcome.
 
