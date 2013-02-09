@@ -9,13 +9,20 @@ For more Information to Atlassians Produrcts please visit: http://www.atlassian.
 # Features #
 
 ## Dependencies ##
-You need a fresh System installation, all dependencies will be handled by the script:
-* Apache Webserver
-* Postfix Mail Server
-* MySQL Database Server
-* Init Scripts
-* Oracle Java JVM > 1.7
-* MySQL JDBC Driver
+You just need a fresh system installation, described in the Platform section. All dependencies will be handled by the script.
+
+## Functionality ##
+For now the Script handles the following tasks:
+* Postfix Mail Server installation
+* Apache Webserver installation
+* Apache Vhost creation
+* Apache Disk Cache configuration
+* MySQL Database server installation
+* MySQL Database creation
+* MySQL JDBC Driver installation
+* Setup Init scripts
+* Oracle Java JVM > 1.7 installation and upgrade
+* And of course the installation, configuration and update of the following applications
 
 ## Applications ##
 * **Jira** is the project tracker for teams planning, building and launching great products.
@@ -42,13 +49,13 @@ As the script runs with Bash it's limited to Linux/Unix Style-Systems only.
 The Script is build for the following Platforms:
 * Debian, Ubuntu
 
-Support for the following Platforms is coming soon:
-* Red Hat, CentOS, Oracle
-
 The Script is tested on the following Versions:
 * Debian 6.06
 * Ubuntu 12.04.1
 * 32 and 64 bit
+
+Support for the following Platforms is coming:
+* Red Hat, CentOS, Oracle
 
 ## Systems ##
 There are multiple ways to customize or scale your setup:
@@ -78,7 +85,7 @@ You need at least 1GB of system memory for each application. The script checks t
 
 Be aware that for now the database server needs to tuned by the user.
 
-Consider using: https://github.com/rackerhacker/MySQLTuner-perl
+Consider using: http://mysqltuner.pl
 
 ## Hostnames ##
 
