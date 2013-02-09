@@ -152,6 +152,12 @@ The only things that are not automatic are the Apache ssl settings in your vhost
 After you finish the installation you can go directly to the Setup process on the wiki:
 https://confluence.atlassian.com
 
+## Known Issues ##
+
+If you come to the point where you get this error "crowd unable to login after setup" please read the following information:
+
+https://confluence.atlassian.com/display/CROWDKB/Client+Host+is+Invalid
+
 # Why Bash #
 There may be better scripting languages than Bash, but I used Bash because most sysadmins I know understand shell scripting better than C/C++ or Python. I hope to make it easier to understand, debug and maybe get some patches.
 
