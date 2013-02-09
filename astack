@@ -516,7 +516,7 @@ function createVhost() {
  
   RewriteEngine     On
   RewriteCond       %{HTTPS} off
-  RewriteRule       ^/?(.*) https://%{HTTP_HOST}%{REQUEST_URI}
+  RewriteRule       ^/?(.*) https://${APP_NAME}.${DOMAIN}/$1 [R=301,L]
 </VirtualHost>
  
 <VirtualHost *:443>
