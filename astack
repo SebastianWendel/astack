@@ -278,7 +278,7 @@ function installApache() {
     else
       logger DEBUG "Apache web server is already installed."
     fi
-    if a2enmod proxy proxy_http ssl rewrite &> /dev/null ; then
+    if a2enmod proxy proxy_http ssl rewrite cache disk_cache &> /dev/null ; then
       logger DEBUG "Successfully loaded Apache web server modules."
     else
       logger ERROR "Can't load Apache web server modules, please have a look to the Apache logfiles."
@@ -339,7 +339,7 @@ function installPostfix() {
 }
 
 function deployDriverJDBC() {
-  if ! BIN_NAME=$(wget -qO- http://dev.mysql.com/downloads/connector/j/ | grep "<td class=\"sub-text\">(" | grep "tar.gz" | cut -d"(" -f2 | cut -d")" -f1) ; then
+  if ! BIN_NAME="mysql-connector-java-$(wget -qO- http://dev.mysql.com/downloads/connector/j/ | grep "<h1>Connector/J" | cut -d " " -f2 | cut -d"<" -f1).tar.gz" ; then
     logger ERROR "Can't get MySQL JDBC-Drver Version from \"http://dev.mysql.com/downloads/connector/j/\"."
     exit 1
   fi
@@ -544,6 +544,10 @@ function createVhost() {
     Order allow,deny
     Allow from all
   </Location>
+
+  CacheEnable disk /s
+  CacheIgnoreHeaders Set-Cookie
+  CacheRoot /var/cache/apache2/${1}
 </VirtualHost>
 EOF
 )
@@ -1317,6 +1321,47 @@ function restoreDatabase() {
   unset MYSQL_PASSWORD
 }
 
+
+function installCacheDependencies() {
+    if [ ! -d /var/cache/apache2/${1} ]; then
+        if mkdir -p /var/cache/apache2/${1} &> /dev/null ; then
+            logger DEBUG "Successfully created apache cache folder \"/var/cache/apache2/${1}\"."
+        else
+            logger ERROR "Can't create apache cache folder \"/var/cache/apache2/${1}\"."
+        fi 
+        if chown www-data:www-data /var/cache/apache2/${1} &> /dev/null ; then
+            logger DEBUG "Successfully owned apache cache folder \"/var/cache/apache2/${1}\" to user \"www-data\"."
+        esle
+            logger ERROR "Can't owne apache cache folder \"/var/cache/apache2/${1}\" to user \"www-data\"."
+        fi
+    fi
+    if ! crontab -l | grep htcacheclean | grep ${1} &> /dev/null ; then
+        if crontab -l | { cat; echo "0 4 * * * /usr/sbin/htcacheclean -n -t -p /var/cache/apache2/${1} -l 256M"; } | crontab - &> /dev/null ; then
+            logger DEBUG "Successfully added apache cache cron for \"${1}\"."
+        else
+            logger ERROR "Can't removed apache cache cron for \"${1}\"."
+        fi
+    fi
+}
+
+function purgeCacheDependencies() {
+    if rm -rf /var/cache/apache2/${1} &> /dev/null ; then                                                                                                                  
+        logger DEBUG "Successfully removed apache cache folder \"/var/cache/apache2/${1}\"."
+    else
+        logger ERROR "Can't remove apache cache folder \"/var/cache/apache2/${1}\"."
+    fi
+    if crontab -l | grep ${1} &> /dev/null ; then
+        if  crontab -l > /tmp/cron-file.txt && \
+            sed "/${1}/d" -i /tmp/cron-file.txt && \
+            crontab /tmp/cron-file.txt && \
+            rm -f /tmp/cron-file.txt &> /dev/null ; then
+            logger DEBUG "Successfully removed htcacheclean crom for ${1}\"."
+        else
+            logger ERROR "Can't remove htcacheclean cron for ${1}\"."
+        fi
+    fi
+}
+
 #-----------------------------------------------------------------------------------------------------
 # function calls
 #-----------------------------------------------------------------------------------------------------
@@ -1343,6 +1388,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     PATH_BACKUP="${PATH_DEST}/${APP}/backup"
     createDatabase ${APP}
     createFolders ${APP}
+    installCacheDependencies ${APP}
     createCredentials ${APP}
     setEnvirement ${APP}
     deployLatestBin ${APP}
@@ -1410,7 +1456,7 @@ if [ ${JOB_RESTORE} -eq 1 ] ; then
 fi
 
 if [ ${JOB_PURGE} -eq 1 ] ; then
-  read -r -p "Are you sure? [Y/n] " response
+  read -r -p "Are you sure? All application data and backups will be lost! [Y/n] " response
   if [[ $response =~ ^([yY][eE][sS]|[yY])$ ]]; then
     purgeJava
     for APP in ${APPS}; do
@@ -1418,6 +1464,7 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
       purgeCredentials ${APP}
       purgeFolders ${APP}
       purgeInitScript ${APP}
+      purgeCacheDependencies ${APP}
       if [ ${EXT_PROXY} -ne 1 ] ; then
         purgeVhost ${APP}
       fi
