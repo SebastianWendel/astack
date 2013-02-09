@@ -301,7 +301,6 @@ function installApache() {
 
 function installMySQL() {
   if [ ${DISTRO} == "Ubuntu" ] || [ ${DISTRO} == "debian" ] ; then
-    #if ! dpkg -s mysql-server &> /dev/null ; then 
     if ! which mysqld &> /dev/null ; then 
       apt-get update &> /dev/null
       if DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server &> /dev/null ; then
@@ -319,6 +318,18 @@ function installMySQL() {
       fi
     else
       logger DEBUG "MySQL-Server is already installed."
+    fi
+    if [ "$(grep max_allowed_packet /etc/mysql/my.cnf | awk '{print $3}' | uniq)" == "16M" ]; then 
+        if sed "s/max_allowed_packet.*/max_allowed_packet = 32M/g" -i /etc/mysql/my.cnf &> /dev/null ; then
+          logger DEBUG "Successfully set MySQL package size configuration to 32M."
+      else
+          logger ERROR "Can't set MySQL package size configuration"
+      fi
+      if service mysql reload &> /dev/null ; then
+          logger DEBUG "Successfully reload MySQL Server config."
+      else
+          logger ERROR "Can't reload MySQL Server config."
+      fi
     fi
   fi
 }
@@ -1331,7 +1342,7 @@ function installCacheDependencies() {
         fi 
         if chown www-data:www-data /var/cache/apache2/${1} &> /dev/null ; then
             logger DEBUG "Successfully owned apache cache folder \"/var/cache/apache2/${1}\" to user \"www-data\"."
-        esle
+        else
             logger ERROR "Can't owne apache cache folder \"/var/cache/apache2/${1}\" to user \"www-data\"."
         fi
     fi
@@ -1345,9 +1356,7 @@ function installCacheDependencies() {
 }
 
 function purgeCacheDependencies() {
-    if rm -rf /var/cache/apache2/${1} &> /dev/null ; then                                                                                                                  
-        logger DEBUG "Successfully removed apache cache folder \"/var/cache/apache2/${1}\"."
-    else
+    if ! rm -rf /var/cache/apache2/${1} &> /dev/null ; then 
         logger ERROR "Can't remove apache cache folder \"/var/cache/apache2/${1}\"."
     fi
     if crontab -l | grep ${1} &> /dev/null ; then
