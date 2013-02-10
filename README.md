@@ -19,7 +19,7 @@ For now the Script handles the following tasks:
 * Apache Disk Cache configuration
 * MySQL Database server installation
 * MySQL Database creation
-* MySQL JDBC Driver installation
+* MySQL JDBC Driver installation and update
 * Setup Init scripts
 * Oracle Java JVM > 1.7 installation and update
 * Atlassian CLI installation and update

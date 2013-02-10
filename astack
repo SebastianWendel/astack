@@ -4,7 +4,7 @@
 # Description:  show, install, update, backup and restore atlassian products
 # Plattform:    Debian, Ubuntu
 # Created:      01.09.2012
-# Version:      0.2.0
+# Version:      0.2.1
 # Author:       Sebastian Wendel, SourceIndex IT-Services, Hamburg/Germany
 # License:      Apache License, Version 2.0
 #-----------------------------------------------------------------------------------------------------
@@ -516,7 +516,7 @@ function createVhost() {
  
   RewriteEngine     On
   RewriteCond       %{HTTPS} off
-  RewriteRule       ^/?(.*) https://${APP_NAME}.${DOMAIN}/$1 [R=301,L]
+  RewriteRule       ^/?(.*) https://${APP_NAME}.${DOMAIN} [R=301,L]
 </VirtualHost>
  
 <VirtualHost *:443>
