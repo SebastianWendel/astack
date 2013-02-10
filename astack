@@ -4,7 +4,7 @@
 # Description:  show, install, update, backup and restore atlassian products
 # Plattform:    Debian, Ubuntu
 # Created:      01.09.2012
-# Version:      0.1.2
+# Version:      0.2.0
 # Author:       Sebastian Wendel, SourceIndex IT-Services, Hamburg/Germany
 # License:      Apache License, Version 2.0
 #-----------------------------------------------------------------------------------------------------
@@ -998,28 +998,37 @@ function configTomcatProxy() {
 }
 
 function setHomes() {
-  if [ ${1} == "crowd" ]; then
-    if echo "${1}.home=${PATH_DATA}" > ${PATH_DEST}/${1}/current/${1}-webapp/WEB-INF/classes/${1}-init.properties ; then
-      logger DEBUG "Successfully add home path to \"${1}\" config."
-    else
-      logger ERROR "Can't add home path to \"${1}\" config."
-      exit 1
+    if [ ${1} == "crowd" ]; then
+        if echo "${1}.home=${PATH_DATA}" > ${PATH_DEST}/${1}/current/${1}-webapp/WEB-INF/classes/${1}-init.properties ; then
+            logger DEBUG "Successfully add home path to \"${1}\" config."
+        else
+            logger ERROR "Can't add home path to \"${1}\" config."
+            exit 1
+        fi
+    elif [ ${1} == "confluence" ]; then
+        if echo "${1}.home=${PATH_DATA}" > ${PATH_DEST}/${1}/current/${1}/WEB-INF/classes/${1}-init.properties ; then
+            logger DEBUG "Successfully add home path to \"${1}\" config."
+        else
+            logger ERROR "Can't add home path to \"${1}\" config."
+            exit 1
+        fi
+    elif [ ${1} == "jira" ]; then
+        if echo "${1}.home=${PATH_DATA}" > ${PATH_DEST}/${1}/current/atlassian-${1}/WEB-INF/classes/${1}-application.properties ; then
+            logger DEBUG "Successfully add home path to \"${1}\" config."
+        else
+            logger ERROR "Can't add home path to \"${1}\" config."
+            exit 1
+        fi
+    elif [ ${1} == "fisheye" ]; then
+        if ! grep FISHEYE_INST "${PATH_DATA}/.profile" &> /dev/null ; then
+            if echo "export FISHEYE_INST=${PATH_DATA}" | tee -a "${PATH_DATA}/.profile" &> /dev/null ; then
+                logger DEBUG "Successfully add home path to \"${1}\" config."
+            else
+                logger ERROR "Can't add home path to \"${1}\" config."
+                exit 1
+            fi
+        fi
     fi
-  elif [ ${1} == "confluence" ]; then
-    if echo "${1}.home=${PATH_DATA}" > ${PATH_DEST}/${1}/current/${1}/WEB-INF/classes/${1}-init.properties ; then
-      logger DEBUG "Successfully add home path to \"${1}\" config."
-    else
-      logger ERROR "Can't add home path to \"${1}\" config."
-      exit 1
-    fi
-  elif [ ${1} == "jira" ]; then
-    if echo "${1}.home=${PATH_DATA}" > ${PATH_DEST}/${1}/current/atlassian-${1}/WEB-INF/classes/${1}-application.properties ; then
-      logger DEBUG "Successfully add home path to \"${1}\" config."
-    else
-      logger ERROR "Can't add home path to \"${1}\" config."
-      exit 1
-    fi
-  fi
 }
 
 getServerMemory(){
@@ -1032,12 +1041,6 @@ getServerMemory(){
 }
 
 function serverMemorycalc() {
-  APP_MEM_FREE="$(echo "($(free -l | grep "Mem:" | awk '{print $4}') / $(echo "${APPS} mysql" | wc -w)) / 1024"  | bc)"
-  APP_MEM_PERM="$(echo "${APP_MEM_FREE} / 5" | bc)"
-  APP_MEM_HEAP="$(echo "${APP_MEM_PERM} * 4" | bc)"
-  if [ "${APP_MEM_PERM}" -lt "256" ]; then 
-    APP_MEM_PERM="256"
-  fi
   if [ ${1} == "jira" ]; then
     if sed "s/JVM_MAXIMUM_MEMORY=\"[0-9]*m\"/JVM_MAXIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
        sed "s/JVM_MINIMUM_MEMORY=\"[0-9]*m\"/JVM_MINIMUM_MEMORY=\"${APP_MEM_HEAP}m\"/g" -i ${PATH_DEST}/${1}/current/bin/setenv.sh && \
@@ -1074,7 +1077,16 @@ function serverMemorycalc() {
       logger ERROR "Can't change memory setting of \"${1}\"."
       exit 1
     fi
-  fi
+    elif [ ${1} == "fisheye" ]; then
+        if ! grep MaxPermSize "${PATH_DATA}/.profile" &> /dev/null ; then
+            if echo "export FISHEYE_OPTS=\"-Xms${APP_MEM_HEAP}m -Xmx${APP_MEM_HEAP}m -XX:MaxPermSize=${APP_MEM_PERM}m\"" | tee -a "${PATH_DATA}/.profile" &> /dev/null ; then
+                logger DEBUG "Successfully changed memory setting of \"${1}\"."
+            else
+                logger ERROR "Can't change memory setting of \"${1}\"."
+                exit 1
+            fi
+        fi
+    fi  
 }
 
 function setFixes() {
@@ -1339,11 +1351,13 @@ function installCacheDependencies() {
             logger DEBUG "Successfully created apache cache folder \"/var/cache/apache2/${1}\"."
         else
             logger ERROR "Can't create apache cache folder \"/var/cache/apache2/${1}\"."
+            exit 1
         fi 
         if chown www-data:www-data /var/cache/apache2/${1} &> /dev/null ; then
             logger DEBUG "Successfully owned apache cache folder \"/var/cache/apache2/${1}\" to user \"www-data\"."
         else
             logger ERROR "Can't owne apache cache folder \"/var/cache/apache2/${1}\" to user \"www-data\"."
+            exit 1
         fi
     fi
     if ! crontab -l | grep htcacheclean | grep ${1} &> /dev/null ; then
@@ -1351,6 +1365,7 @@ function installCacheDependencies() {
             logger DEBUG "Successfully added apache cache cron for \"${1}\"."
         else
             logger ERROR "Can't removed apache cache cron for \"${1}\"."
+            exit 1
         fi
     fi
 }
@@ -1358,6 +1373,7 @@ function installCacheDependencies() {
 function purgeCacheDependencies() {
     if ! rm -rf /var/cache/apache2/${1} &> /dev/null ; then 
         logger ERROR "Can't remove apache cache folder \"/var/cache/apache2/${1}\"."
+        exit 1
     fi
     if crontab -l | grep ${1} &> /dev/null ; then
         if  crontab -l > /tmp/cron-file.txt && \
@@ -1367,6 +1383,7 @@ function purgeCacheDependencies() {
             logger DEBUG "Successfully removed htcacheclean crom for ${1}\"."
         else
             logger ERROR "Can't remove htcacheclean cron for ${1}\"."
+            exit 1
         fi
     fi
 }
@@ -1411,7 +1428,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     createVhost ${APP}
     logger INFO "Successfully installed \"${APP}\"."
   done
-  logger INFO "Successfully finished astack4atlassian.\n"
+  logger INFO "Successfully finished astack.\n"
 fi 
 
 if [ ${JOB_UPDATE} -eq 1 ] ; then
@@ -1433,7 +1450,7 @@ if [ ${JOB_UPDATE} -eq 1 ] ; then
     startApp ${APP}
     logger INFO "Successfully updated \"${APP}\"."
   done
-  logger INFO "Successfully finished astack4atlassian.\n"
+  logger INFO "Successfully finished astack.\n"
 fi
 
 if [ ${JOB_BACKUP} -eq 1 ] ; then
@@ -1447,7 +1464,7 @@ if [ ${JOB_BACKUP} -eq 1 ] ; then
     startApp ${APP}
     logger INFO "Successfully backup \"${APP}\"."
   done
-  logger INFO "Successfully finished astack4atlassian.\n"
+  logger INFO "Successfully finished astack.\n"
 fi
 
 if [ ${JOB_RESTORE} -eq 1 ] ; then
@@ -1461,7 +1478,7 @@ if [ ${JOB_RESTORE} -eq 1 ] ; then
     startApp ${APP}
     logger INFO "Successfully restore \"${APP}\"."
   done
-  logger INFO "Successfully finished astack4atlassian.\n"
+  logger INFO "Successfully finished astack.\n"
 fi
 
 if [ ${JOB_PURGE} -eq 1 ] ; then
@@ -1480,7 +1497,7 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
       logger INFO "Successfully purged \"${APP}\"."
     done
   fi
-  logger INFO "Successfully finished astack4atlassian.\n"
+  logger INFO "Successfully finished astack.\n"
 fi
 
 if [ ${JOB_TEST} -eq 1 ] ; then
