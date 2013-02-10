@@ -683,30 +683,35 @@ function setEnvirement() {
 }
 
 function purgeCredentials() {
-  if id -u ${1} &> /dev/null ; then
-    if userdel -f ${1} &> /dev/null ; then
-      logger DEBUG "Successfully deleted user \"${1}\"."
+    if id -u ${1} &> /dev/null ; then
+        if userdel -f ${1} &> /dev/null ; then
+            logger DEBUG "Successfully deleted user \"${1}\"."
+        fi
     fi
-  fi
 }
 
 function purgeJava() {
-  if [ -d "${PATH_DEST}/java" ] ; then
-    if rm -rf "${PATH_DEST}/java" ; then 
-      logger DEBUG "Successfully deleted \"${PATH_DEST}/java\" folder."
+    if [ -d "${PATH_DEST}/java" ] ; then
+        if rm -rf "${PATH_DEST}/java" ; then 
+            logger DEBUG "Successfully deleted \"${PATH_DEST}/java\" folder."
+        fi
+        if grep JAVA_HOME /etc/profile &> /dev/null ; then 
+            if sed '/JAVA_HOME/d' -i /etc/profile &> /dev/null ; then
+                logger DEBUG "Successfully deleted \"${PATH_DEST}/java\" folder."
+            fi
+        fi
     fi
-  fi
 }
 
 function stopApp() {
-  PID=$(ps -ef | grep ${1} | grep -v -e "grep" -e "$(basename $0)" | awk '{print $2}')
-  if [ ! "x${PID}" == "x" ] ; then
-    while ps ef ${PID} &> /dev/null ; do
-      kill ${PID} &> /dev/null
-      sleep 2
-    done
-    logger INFO "Successfully stopped application \"${1}\" with pid \"${PID}\"."
-  fi
+    PID=$(ps -ef | grep ${1} | grep -v -e "grep" -e "$(basename $0)" | awk '{print $2}')
+    if [ ! "x${PID}" == "x" ] ; then
+        while ps ef ${PID} &> /dev/null ; do
+            kill ${PID} &> /dev/null
+            sleep 2
+        done
+        logger INFO "Successfully stopped application \"${1}\" with pid \"${PID}\"."
+    fi
 }
 
 function startApp() {
@@ -779,6 +784,16 @@ function deployLatestJava() {
   if rm -f ${PATH_TEMP}/jre-linux.tar.gz &> /dev/null ; then
     logger DEBUG "Successfully removed \"${PATH_TEMP}/jre-linux.tar.gz\" archive."
   fi
+    if ! grep JAVA_HOME /etc/profile &> /dev/null ; then
+        if echo 'JAVA_HOME=/opt/java/current' | tee -a /etc/profile &> /dev/null && \
+           echo 'PATH=$PATH:$JAVA_HOME/bin' | tee -a /etc/profile &> /dev/null && \
+           source /etc/profile ; then
+            logger DEBUG "Successfully set and loaded JAVA_HOME to the global profile"
+        else
+            logger ERROR "Can't set and loaded JAVA_HOME to the global profile"
+            exit 1
+        fi
+    fi
 }
  
 function showApp() {
@@ -869,7 +884,7 @@ function deployLatestBin() {
         exit 1
       fi
     fi
-    if ln -s ${APP_PATH} ${PATH_DEST}/${1}/current ; then
+    if ln -fs ${APP_PATH} ${PATH_DEST}/${1}/current ; then
       logger DEBUG "Successfully set softlink to \"${PATH_DEST}/${1}/current\"."
     else
       logger ERROR "Can't set softlink to \"${PATH_DEST}/${1}/current\"."
@@ -1388,6 +1403,75 @@ function purgeCacheDependencies() {
     fi
 }
 
+function deployAtlassianCLI() {
+    PLUGIN_PAGE="https://marketplace.atlassian.com/plugins/org.swift.atlassian.cli"
+    DOWNLOAD_URL=$(wget -qO- ${PLUGIN_PAGE} | grep "action-buttons no-pricing" | cut -d"=" -f4 | grep -v "plugin-versions" | awk -F\" '{print $2}')
+    if wget ${DOWNLOAD_URL} -O ${PATH_TEMP}/atlassian-cli-distribution.zip &> /dev/null ; then
+        logger DEBUG "Successfully download atlassian cli binary files."
+    else
+        logger ERROR "Can't download atlassian cli binary files from \"${DOWNLOAD_URL}\"."
+    fi
+    FOLDER_NAME=$(unzip -t ${PATH_TEMP}/atlassian-cli-distribution.zip | grep -v Archive | head -n1 | cut -d":" -f2 | cut -d"/" -f1 | sed 's/^[ \t]*//')
+    if [ ! -d ${PATH_DEST}/atlassian-cli ]; then
+        if mkdir ${PATH_DEST}/atlassian-cli &> /dev/null ; then
+            logger DEBUG "Successfully create destinastion folder \"${PATH_DEST}/atlassian-cli\"."
+        else
+            logger ERROR "Can't create destinastion folder \"${PATH_DEST}/atlassian-cli\"."
+        fi
+    else
+        logger DEBUG "Destinastion folder \"${PATH_DEST}/atlassian-cli\" already exists."
+    fi
+    if [ ! -d ${PATH_DEST}/atlassian-cli/${FOLDER_NAME} ]; then
+        if unzip ${PATH_TEMP}/atlassian-cli-distribution.zip -d ${PATH_DEST}/atlassian-cli &> /dev/null ; then
+            logger DEBUG "Successfully uncompressed new binary files ${FOLDER_NAME} to \"${PATH_DEST}/atlassian-cli/\"."
+        else
+            logger ERROR "Can't uncompressed new binary files ${FOLDER_NAME} to \"${PATH_DEST}/atlassian-cli/\"."
+        fi
+        if ln -fs ${PATH_DEST}/atlassian-cli/${FOLDER_NAME} ${PATH_DEST}/atlassian-cli/current &> /dev/null ; then
+            logger DEBUG "Successfully set softlink to the latest version \"${PATH_DEST}/atlassian-cli/${FOLDER_NAME}\"."
+        else
+            logger ERROR "Can't set softlink to the latest version \"${PATH_DEST}/atlassian-cli/${FOLDER_NAME}\"."
+        fi
+        logger INFO "Successfully install latest version of Atlassian CLI."
+    else
+        logger DEBUG "The version of Atlassian CLI \"${FOLDER_NAME}\" already exists."
+    fi
+    for BIN_FOLDERS in $(ls ${PATH_DEST}/atlassian-cli | grep -v current | head -n-${MAX_BINS}) ; do
+        if rm -rf ${PATH_DEST}/atlassian-cli/${BIN_FOLDERS} &> /dev/null ; then
+            logger DEBUG "Successfully deleted old binary deployments \"${BIN_FOLDERS}\"."
+        else
+            logger ERROR "Can't deleted old binary deployments \"${BIN_FOLDERS}\"."
+        fi
+    done
+    if ! grep atlassian-cli /etc/profile ; then
+        if echo "alias atlassian=/opt/atlassian-cli/current/atlassian.sh" | tee -a /etc/profile &> /dev/null && \
+           echo "alias bamboo=/opt/atlassian-cli/current/bamboo.sh" | tee -a /etc/profile &> /dev/null && \
+           echo "alias confluence=/opt/atlassian-cli/current/confluence.sh" | tee -a /etc/profile &> /dev/null && \
+           echo "alias crucible=/opt/atlassian-cli/current/crucible.sh" | tee -a /etc/profile &> /dev/null && \
+           echo "alias fisheye=/opt/atlassian-cli/current/fisheye.sh" | tee -a /etc/profile &> /dev/null && \
+           echo "alias jira=/opt/atlassian-cli/current/jira.sh" | tee -a /etc/profile &> /dev/null ; then
+            logger DEBUG "Successfully added atlassian-cli shell alias to the global \"/etc/profile\"."
+        else
+            logger ERROR "Can't add atlassian-cli shell alias to the global \"/etc/profile\"."
+        fi
+        logger DEBUG "Atlassian CLI shell alias are already in the global \"/etc/profile\"."
+    fi
+}
+
+function purgeAtlassianCLI() {
+    if rm -rf ${PATH_DEST}/atlassian-cli &> /dev/null ; then 
+        logger DEBUG "Successfully removed folder \"${PATH_DEST}/atlassian-cli\"."
+    else
+        logger ERROR "Can't removed folder \"${PATH_DEST}/atlassian-cli\"."
+    fi 
+    if sed '/atlassian-cli/d' -i /etc/profile ; then
+        logger DEBUG "Successfully removed atlassian-cli shell alias from the global \"/etc/profile\"."
+    else
+        logger ERROR "Can't remove atlassian-cli shell alias from the global \"/etc/profile\"."
+    fi
+    logger INFO "Successfully purged \"atlassian-cli\"."
+}
+
 #-----------------------------------------------------------------------------------------------------
 # function calls
 #-----------------------------------------------------------------------------------------------------
@@ -1409,6 +1493,7 @@ if [ ${JOB_INSTALL} -eq 1 ] ; then
     createCerts
   fi
   installMySQL
+  deployAtlassianCLI
   for APP in ${APPS}; do
     PATH_DATA="${PATH_DEST}/${APP}/data"
     PATH_BACKUP="${PATH_DEST}/${APP}/backup"
@@ -1434,6 +1519,7 @@ fi
 if [ ${JOB_UPDATE} -eq 1 ] ; then
   checkFilesystem
   deployLatestJava
+  deployAtlassianCLI
   for APP in ${APPS}; do
     PATH_DATA="${PATH_DEST}/${APP}/data"
     PATH_BACKUP="${PATH_DEST}/${APP}/backup"
@@ -1485,6 +1571,7 @@ if [ ${JOB_PURGE} -eq 1 ] ; then
   read -r -p "Are you sure? All application data and backups will be lost! [Y/n] " response
   if [[ $response =~ ^([yY][eE][sS]|[yY])$ ]]; then
     purgeJava
+    purgeAtlassianCLI
     for APP in ${APPS}; do
       stopApp ${APP}
       purgeCredentials ${APP}

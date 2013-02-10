@@ -22,6 +22,7 @@ For now the Script handles the following tasks:
 * MySQL JDBC Driver installation
 * Setup Init scripts
 * Oracle Java JVM > 1.7 installation and update
+* Atlassian CLI installation and update
 * And of course the installation, configuration and update of the following applications
 
 ## Applications ##
